@@ -1,0 +1,6 @@
+scikit-learn
+scipy
+jupyter
+matplotlib
+dash
+price_bars==0.0.1

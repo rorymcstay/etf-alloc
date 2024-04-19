@@ -1,0 +1,24 @@
+[project]
+name = "tradingo"
+version = "0.0.1"
+authors = [
+  { name="Rory McStay", email="rory@rorymcstay.com" },
+]
+description = "Instrument price store"
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+  "numpy",
+  "pandas",
+  "pandera",
+  "arcticdb",
+  "pytest",
+  "PyYAML",
+  "yfinance",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
