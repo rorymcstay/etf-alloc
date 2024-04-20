@@ -3,20 +3,19 @@ import os
 import json
 import pathlib
 import re
+from typing import Literal
 from datetime import datetime
 from airflow.exceptions import DuplicateTaskIdFound
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-
-from openbb import obb
+from airflow.models import Operator
 
 import arcticdb as adb
 import pandas as pd
 
 from tradingo.symbols import ARCTIC_URL, symbol_provider, symbol_publisher, lib_provider
-from tradingo.utils import with_instrument_details
-
+from tradingo.signals import ewmac_signal
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +25,18 @@ START_DATE = "2018-01-01 00:00:00+00:00"
 PROVIDER = "yfinance"
 AUM = 70_000
 ARCTIC = adb.Arctic(ARCTIC_URL)
+
+Provider = Literal[
+    "alpha_vantage",
+    "cboe",
+    "fmp",
+    "intrinio",
+    "polygon",
+    "tiingo",
+    "tmx",
+    "tradier",
+    "yfinance",
+]
 
 
 def get_config():
@@ -39,46 +50,11 @@ def get_instruments(config) -> pd.DataFrame:
     ).rename_axis("Symbol")
 
 
-def make_task_id(task, symbol=None):
+def make_task_id(task, symbol=None) -> str:
     if symbol:
-        symbol = re.sub("\^|/", ".", str(symbol).strip())
+        symbol = re.sub(r"\^|/", ".", str(symbol).strip())
         return f"{task}_{symbol}"
     return task
-
-
-@symbol_provider(close="ASSET_PRICES/ADJ_CLOSE.{provider}")
-@symbol_publisher(
-    "MODEL_SIGNALS/{signal_name}",
-    "MODEL_SIGNALS/vol_{speed1}",
-    "MODEL_SIGNALS/vol_{speed2}",
-    symbol_prefix="{config_name}.{model_name}.",
-)
-def ewmac_signal(
-    close: pd.DataFrame,
-    speed1: int,
-    speed2: int,
-    provider: str,
-    config_name: str,
-    model_name="ewmac",
-    signal_name="ewmac_{speed1}_{speed2}",
-    **kwargs,
-):
-
-    logger.info(
-        "Running %s model=%s signal=%s with %s",
-        config_name,
-        model_name,
-        signal_name,
-        provider,
-    )
-
-    returns = close.pct_change()
-
-    return (
-        (returns.ewm(halflife=speed2).mean() - returns.ewm(halflife=speed1).mean()),
-        returns.ewm(halflife=speed1).std(),
-        returns.ewm(halflife=speed2).std(),
-    )
 
 
 @symbol_provider(
@@ -160,15 +136,15 @@ def portfolio_construction(name: str, model_signals: adb.library.Library, **kwar
     "ASSET_PRICES/CLOSE", "ASSET_PRICES/ADJ_CLOSE", symbol_postfix=".{provider}"
 )
 def sample_prices(
-    universe: list[str], start_date: str, end_date: str, provider: str, **kwargs
+    universe: list[str], start_date: str, end_date: str, provider: Provider, **kwargs
 ):
+    from openbb import obb
 
-    data = obb.equity.price.historical(
+    data = obb.equity.price.historical(  # type: ignore
         universe, start_date=start_date, end_date=end_date, provider=provider
     ).to_dataframe()
 
     close = data.pivot(columns=["symbol"], values="close")
-
     close.index = pd.to_datetime(close.index)
 
     return (close, 100 * (1 + close.pct_change()).cumprod())
@@ -191,7 +167,7 @@ def calculate_trades(
     logger.info(
         "Calculating %s trades for %s previous_refdate=%s",
         stage,
-        strategy,
+        name,
         previous_refdate,
     )
 
@@ -201,7 +177,7 @@ def calculate_trades(
     )
 
 
-def get_or_create_signal(arctic, name, signal, function, dag: DAG) -> PythonOperator:
+def get_or_create_signal(name, signal, function, dag: DAG) -> Operator:
     task_id = make_task_id("signal", name)
     try:
         return PythonOperator(
@@ -209,7 +185,7 @@ def get_or_create_signal(arctic, name, signal, function, dag: DAG) -> PythonOper
             python_callable=SIGNALS[function],
             op_kwargs={
                 "model_name": "trend",
-                "start_date": pd.Timestamp("2022-01-01 00:00:00+00:00"),
+                "start_date": START_DATE,
                 "end_date": "{{ data_interval_end }}",
                 "signal_name": name,
                 "config_name": dag.dag_id,
@@ -218,7 +194,7 @@ def get_or_create_signal(arctic, name, signal, function, dag: DAG) -> PythonOper
             },
         )
 
-    except DuplicateTaskIdFound as ex:
+    except DuplicateTaskIdFound:
         return dag.get_task(task_id)
 
 
@@ -257,7 +233,7 @@ with DAG(
                 task_id=make_task_id("portfolio_construction", name),
                 python_callable=portfolio_construction,
                 op_kwargs={
-                    "start_date": pd.Timestamp("2022-01-01 00:00:00+00:00"),
+                    "start_date": START_DATE,
                     "end_date": "{{ data_interval_end }}",
                     "name": name,
                     "config_name": config["name"],
@@ -267,7 +243,7 @@ with DAG(
                 task_id=make_task_id("backtest", name),
                 python_callable=backtest,
                 op_kwargs={
-                    "start_date": pd.Timestamp("2022-01-01 00:00:00+00:00"),
+                    "start_date": START_DATE,
                     "end_date": "{{ data_interval_end }}",
                     "name": name,
                     "stage": "RAW",
@@ -279,7 +255,7 @@ with DAG(
             #    task_id=make_task_id("calculate_trades", name),
             #    python_callable=calculate_trades,
             #    op_kwargs={
-            #        "start_date": pd.Timestamp("2022-01-01 00:00:00+00:00"),
+            #        "start_date": START_DATE,
             #        "end_date": "{{ data_interval_end }}",
             #        "previous_refdate": "{{ data_interval_start }}",
             #        "name": name,
@@ -294,7 +270,6 @@ with DAG(
                 _ = (
                     prices
                     >> get_or_create_signal(
-                        ARCTIC,
                         signal,
                         signal_config["kwargs"],
                         signal_config.pop("function"),
