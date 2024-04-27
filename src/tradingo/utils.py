@@ -35,3 +35,9 @@ def with_instrument_details(
         .sort_index()
         .transpose()
     ).dropna()
+
+
+def buffer(
+    series: pd.Series,
+):
+    pass

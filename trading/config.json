@@ -5,9 +5,10 @@
     "file": "/home/rory/dev/airflow/trading/universe.csv",
     "index_col": "Ticker"
   },
+  "aum": 70000,
   "signal_configs": {
     "ewmac_64_32": {
-      "function": "ewmac",
+      "function": "ewmac_signal",
       "args": [],
       "kwargs": {
         "speed1": 64,
@@ -16,7 +17,7 @@
       }
     },
     "ewmac_128_64": {
-      "function": "ewmac",
+      "function": "ewmac_signal",
       "args": [],
       "kwargs": {
         "speed1": 128,
@@ -27,7 +28,7 @@
   },
   "portfolio": {
     "trend": {
-      "signals": {
+      "signal_weights": {
         "ewmac_64_32": 0.5,
         "ewmac_128_64": 0.5
       },
@@ -38,6 +39,9 @@
           "Fixed Income": 0.2
         },
         "multiplier": 0.0025
+      },
+      "constraints": {
+        "long_only": true
       }
     }
   }

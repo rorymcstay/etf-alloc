@@ -15,7 +15,9 @@ import arcticdb as adb
 import pandas as pd
 
 from tradingo.symbols import ARCTIC_URL, symbol_provider, symbol_publisher, lib_provider
-from tradingo.signals import ewmac_signal
+from tradingo import signals
+from tradingo.backtest import backtest
+from tradingo.portfolio import portfolio_construction
 
 logger = logging.getLogger(__name__)
 
@@ -55,81 +57,6 @@ def make_task_id(task, symbol=None) -> str:
         symbol = re.sub(r"\^|/", ".", str(symbol).strip())
         return f"{task}_{symbol}"
     return task
-
-
-@symbol_provider(
-    portfolio="PORTFOLIO/{name}.{stage}", prices="ASSET_PRICES/ADJ_CLOSE.{provider}"
-)
-@symbol_publisher(
-    "BACKTEST/SUMMARY",
-    "BACKTEST/INSTRUMENT_RETURNS",
-    symbol_prefix="{config_name}.{name}.",
-)
-def backtest(
-    portfolio: pd.DataFrame,
-    prices: pd.DataFrame,
-    name: str,
-    stage: str = "RAW",
-    **kwargs,
-):
-
-    logger.info("Running %s %s backtest", stage, name)
-
-    returns = prices.pct_change() * portfolio
-
-    sharpe = (
-        returns.sum(axis=1).rolling(252).mean() / returns.sum(axis=1).rolling(252).std()
-    )
-
-    return (
-        pd.concat(
-            (
-                returns.sum(axis=1),
-                returns.sum(axis=1).cumsum(),
-                sharpe,
-            ),
-            axis=1,
-            keys=("RETURNS", "ACCOUNT", "SHARPE"),
-        ),
-        returns,
-    )
-
-
-SIGNALS = {
-    "ewmac": ewmac_signal,
-}
-
-
-@lib_provider(model_signals="MODEL_SIGNALS")
-@symbol_publisher("PORTFOLIO/RAW", symbol_prefix="{config_name}.{name}.")
-def portfolio_construction(name: str, model_signals: adb.library.Library, **kwargs):
-
-    config = get_config()
-    strategy = config["portfolio"][name]
-    signals = strategy["signals"]
-    asset_class_weights = strategy["instrument_weights"]["asset_class"]
-    multiplier = strategy["instrument_weights"]["multiplier"]
-    instruments = get_instruments(config)
-
-    weights = multiplier * instruments.apply(
-        lambda i: asset_class_weights.get(i["Asset Class"], 0), axis=1
-    )
-    logger.info("Weights: %s", weights)
-
-    signal_data = pd.concat(
-        (
-            model_signals.read(f'{kwargs["config_name"]}.{name}.{signal}').data
-            * weights
-            * signal_weight
-            for signal, signal_weight in signals.items()
-        ),
-        keys=signals,
-        axis=1,
-    )
-
-    logger.info("signal_data: %s", signal_data)
-
-    return (AUM * signal_data.transpose().groupby(level=[1]).sum().transpose(),)
 
 
 @symbol_publisher(
@@ -182,7 +109,7 @@ def get_or_create_signal(name, signal, function, dag: DAG) -> Operator:
     try:
         return PythonOperator(
             task_id=task_id,
-            python_callable=SIGNALS[function],
+            python_callable=getattr(signals, function),
             op_kwargs={
                 "model_name": "trend",
                 "start_date": START_DATE,
@@ -227,53 +154,52 @@ with DAG(
     )
 
     for name, strategy in config["portfolio"].items():
+        pos = PythonOperator(
+            task_id=make_task_id("portfolio_construction", name),
+            python_callable=portfolio_construction,
+            op_kwargs={
+                "start_date": START_DATE,
+                "end_date": "{{ data_interval_end }}",
+                "name": name,
+                "config_name": config["name"],
+                "provider": PROVIDER,
+            },
+        )
+        _ = pos >> PythonOperator(
+            task_id=make_task_id("backtest", name),
+            python_callable=backtest,
+            op_kwargs={
+                "start_date": START_DATE,
+                "end_date": "{{ data_interval_end }}",
+                "name": name,
+                "stage": "RAW",
+                "config_name": config["name"],
+                "provider": PROVIDER,
+            },
+        )
+        # _ = pos >> PythonOperator(
+        #    task_id=make_task_id("calculate_trades", name),
+        #    python_callable=calculate_trades,
+        #    op_kwargs={
+        #        "start_date": START_DATE,
+        #        "end_date": "{{ data_interval_end }}",
+        #        "previous_refdate": "{{ data_interval_start }}",
+        #        "name": name,
+        #        "stage": "RAW",
+        #        "provider": PROVIDER,
+        #        "config_name": config["name"],
+        #    },
+        # )
 
-        for name, strategy in config["portfolio"].items():
-            pos = PythonOperator(
-                task_id=make_task_id("portfolio_construction", name),
-                python_callable=portfolio_construction,
-                op_kwargs={
-                    "start_date": START_DATE,
-                    "end_date": "{{ data_interval_end }}",
-                    "name": name,
-                    "config_name": config["name"],
-                },
-            )
-            _ = pos >> PythonOperator(
-                task_id=make_task_id("backtest", name),
-                python_callable=backtest,
-                op_kwargs={
-                    "start_date": START_DATE,
-                    "end_date": "{{ data_interval_end }}",
-                    "name": name,
-                    "stage": "RAW",
-                    "config_name": config["name"],
-                    "provider": PROVIDER,
-                },
-            )
-            # _ = pos >> PythonOperator(
-            #    task_id=make_task_id("calculate_trades", name),
-            #    python_callable=calculate_trades,
-            #    op_kwargs={
-            #        "start_date": START_DATE,
-            #        "end_date": "{{ data_interval_end }}",
-            #        "previous_refdate": "{{ data_interval_start }}",
-            #        "name": name,
-            #        "stage": "RAW",
-            #        "provider": PROVIDER,
-            #        "config_name": config["name"],
-            #    },
-            # )
-
-            for signal in strategy["signals"]:
-                signal_config = config["signal_configs"][signal]
-                _ = (
-                    prices
-                    >> get_or_create_signal(
-                        signal,
-                        signal_config["kwargs"],
-                        signal_config.pop("function"),
-                        dag,
-                    )
-                    >> pos
+        for signal in strategy["signal_weights"]:
+            signal_config = config["signal_configs"][signal]
+            _ = (
+                prices
+                >> get_or_create_signal(
+                    signal,
+                    signal_config["kwargs"],
+                    signal_config.pop("function"),
+                    dag,
                 )
+                >> pos
+            )
