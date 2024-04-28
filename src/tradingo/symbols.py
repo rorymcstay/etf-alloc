@@ -61,6 +61,13 @@ def symbol_provider(
         def wrapper(*args, start_date, end_date, **kwargs):
 
             arctic = adb.Arctic(ARCTIC_URL)
+            orig_symbol_data = {}
+
+            for symbol in symbols:
+                if symbol in kwargs and isinstance(
+                    kwargs[symbol], (pd.DataFrame, pd.Series)
+                ):
+                    orig_symbol_data[symbol] = kwargs.pop(symbol)
 
             logger.info("Providing %s symbols from %s", symbols, arctic)
 
@@ -78,8 +85,10 @@ def symbol_provider(
                     .data
                 )
                 for k, v in symbols.items()
+                if k not in orig_symbol_data
             }
             kwargs.update(symbols_data)
+            kwargs.update(orig_symbol_data)
 
             return func(*args, **kwargs)
 
@@ -93,18 +102,21 @@ def symbol_publisher(*symbols, symbol_prefix="{config_name}.", symbol_postfix=""
     def decorator(func):
 
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args, dry_run=False, **kwargs):
 
             arctic = adb.Arctic(ARCTIC_URL)
             out = func(*args, arctic=arctic, **kwargs)
             logger.info("Publishing %s to %s", symbols, arctic)
 
+            # if kws:
+            #    kwdout = out.pop(-1)
+
             for data, symbol in zip(out, symbols):
 
                 logger.debug(
-                    "writing symbol %s:\n%s",
+                    "writing symbol=%s rows=%s",
                     parse_symbol(symbol, kwargs, symbol_prefix, symbol_postfix),
-                    data.tail(),
+                    len(data.index),
                 )
 
                 lib, sym, params = parse_symbol(
@@ -114,9 +126,13 @@ def symbol_publisher(*symbols, symbol_prefix="{config_name}.", symbol_postfix=""
                     symbol_postfix=symbol_postfix,
                 )
 
-                arctic.get_library(lib, create_if_missing=True).update(
-                    sym, data, upsert=True, **params
-                )
+                if not dry_run:
+
+                    arctic.get_library(lib, create_if_missing=True).update(
+                        sym, data, upsert=True, **params
+                    )
+                else:
+                    return out
 
             return None
 

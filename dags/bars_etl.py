@@ -135,7 +135,7 @@ config = get_config()
 
 with DAG(
     dag_id=config["name"],
-    start_date=datetime.fromisoformat("2024-04-11 00:00:00+00:00"),
+    start_date=datetime.fromisoformat("2024-04-25 00:00:00+00:00"),
     schedule="0 0 * * 1-5",
     catchup=True,
     default_args=DAG_DEFAULT_ARGS,

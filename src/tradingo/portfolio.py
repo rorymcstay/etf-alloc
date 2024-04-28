@@ -49,7 +49,9 @@ def portfolio_construction(
 
     logger.info("signal_data: %s", signal_data)
 
-    positions = signal_data.transpose().groupby(level=[1]).sum().transpose()
+    positions = (
+        signal_data.transpose().groupby(level=[1]).sum().transpose().ffill().fillna(0)
+    )
 
     if constraints["long_only"]:
         positions[(positions < 0.0)] = 0.0
