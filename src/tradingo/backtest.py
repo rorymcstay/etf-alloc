@@ -1,8 +1,9 @@
 import logging
 import copy
-import dataclasses
+from typing import NamedTuple
 
 import pandas as pd
+import numpy as np
 
 from tradingo.symbols import symbol_provider, symbol_publisher
 
@@ -10,10 +11,9 @@ from tradingo.symbols import symbol_provider, symbol_publisher
 logger = logging.getLogger(__name__)
 
 
-@dataclasses.dataclass
-class PnlSnapshot:
+class PnlSnapshot(NamedTuple):
 
-    date: pd.Timestamp | pd.NaT.__class__
+    date: pd.Timestamp
     net_position = 0
     avg_open_price = 0
     net_investment = 0
@@ -24,80 +24,63 @@ class PnlSnapshot:
     last_trade_price = 0
     last_trade_date = None
 
-    def to_dict(self):
-        return {
-            "date": self.date,
-            "net_position": self.net_position,
-            "avg_open_price": self.avg_open_price,
-            "net_investment": self.net_investment,
-            "realised_pnl": self.realised_pnl,
-            "unrealised_pnl": self.unrealised_pnl,
-            "total_pnl": self.total_pnl,
-            "last_qty": self.last_qty,
-            "last_trade_price": self.last_trade_price,
-            "last_trade_date": self.last_trade_date,
-        }
-
-    def __init__(self, date: pd.Timestamp, opening_position=0, opening_price=0):
-        self.date = date
-        if opening_position != 0:
-            self.on_trade(opening_price, opening_position, date)
-
     def on_trade(
         self,
         trade_price: float,
         trade_quantity: float,
         trade_date: pd.Timestamp,
     ):
-        logger.info(
-            "%s: trade_price=%s trade_quantity=%s trade_date=%s",
-            self,
-            trade_price,
-            trade_quantity,
-            trade_date,
-        )
-
-        self = copy.copy(self)
-
-        self.date = trade_date
-        is_still_open = abs(self.net_position + trade_quantity) >= 0
+        m_date = trade_date
+        m_net_position = self.net_position
+        m_realised_pnl = self.realised_pnl
+        m_avg_open_price = self.avg_open_price
+        is_still_open = abs(self.net_position + trade_quantity) > 0
         # net investment
-        self.net_investment = max(
+        m_net_investment = max(
             self.net_investment, abs(self.net_position * self.avg_open_price)
         )
         # realized pnl
         if not is_still_open and self.net_position:
             # Remember to keep the sign as the net position
-            self.realised_pnl += (
+            m_realised_pnl += (
                 (trade_price - self.avg_open_price)
                 * min(abs(trade_quantity), abs(self.net_position))
                 * (abs(self.net_position) / self.net_position)
             )
         # total pnl
-        self.total_pnl = self.realised_pnl + self.unrealised_pnl
+        m_total_pnl = m_realised_pnl + self.unrealised_pnl
         # avg open price
         if is_still_open:
-            self.avg_open_price = (
-                (self.avg_open_price * self.net_position)
-                + (trade_price * trade_quantity)
+            m_avg_open_price = (
+                (m_avg_open_price * m_net_position) + (trade_price * trade_quantity)
             ) / (self.net_position + trade_quantity)
         else:
             # Check if it is close-and-open
             if trade_quantity > abs(self.net_position):
-                self.avg_open_price = trade_price
-        # net position
-        self.net_position += trade_quantity
-        self.last_qty = trade_quantity
-        self.last_trade_price = trade_price
-        self.last_trade_date = trade_date
-        return self
+                m_avg_open_price = trade_price
+
+        m_net_position += trade_quantity
+        m_last_qty = trade_quantity
+        m_last_trade_price = trade_price
+        m_last_trade_date = trade_date
+        return self._replace(
+            date=m_date,
+            net_position=m_net_position,
+            realised_pnl=m_realised_pnl,
+            net_investment=m_net_investment,
+            avg_open_price=m_avg_open_price,
+            last_qty=m_last_qty,
+            last_trade_price=m_last_trade_price,
+            last_trade_date=m_last_trade_date,
+            total_pnl=m_total_pnl,
+        )
 
     def on_market_data(self, last_price: float, date: pd.Timestamp):
-        self = copy.copy(self)
-        self.unrealised_pnl = (last_price - self.avg_open_price) * self.net_position
-        self.total_pnl = self.realised_pnl + self.unrealised_pnl
-        self.date = date
-        return self
+        return self._replace(
+            unrealised_pnl=(last_price - self.avg_open_price) * self.net_position,
+            total_pnl=self.realised_pnl + self.unrealised_pnl,
+            date=date,
+        )
 
 
 @symbol_provider(
@@ -120,23 +103,27 @@ def backtest(
     trades = portfolio.ffill().fillna(0.0).round().diff()
     prices = prices.ffill()
 
-    def compute_backtest(trds: pd.Series):
+    def compute_backtest(inst_trades: pd.Series):
 
-        ticker: str = trds.name
+        ticker: str = inst_trades.name
         logger.warning("Computing backtest for ticker=%s", ticker)
         inst_prices = prices[ticker].ffill()
 
-        current_pnl = PnlSnapshot(date=trds.first_valid_index() - pd.offsets.BDay(1))
+        current_pnl = PnlSnapshot(
+            date=inst_trades.first_valid_index() - pd.offsets.BDay(1)
+        )
 
         pnl_series = []
 
         pnl_series.append(current_pnl)
 
-        for date, (trade, last_price) in pd.concat(
-            (trades, inst_prices.ffill()), axis=1
-        ).items():
+        data = pd.concat(
+            (inst_trades.rename("trade"), inst_prices.rename("price")), axis=1
+        )
+
+        for date, (trade, last_price) in data.iterrows():
             current_pnl = current_pnl.on_market_data(last_price=last_price, date=date)
-            if trade:
+            if not np.isnan(trade) and trade:
                 current_pnl = current_pnl.on_trade(
                     last_price, trade_quantity=trade, trade_date=date
                 )

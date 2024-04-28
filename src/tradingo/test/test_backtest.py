@@ -3,6 +3,7 @@ import pandas as pd
 import arcticdb as adb
 
 from tradingo import backtest
+from tradingo.backtest import PnlSnapshot
 
 
 @pytest.fixture
@@ -18,6 +19,29 @@ def prices(arctic: adb.Arctic):
 @pytest.fixture
 def portfolio(arctic: adb.Arctic):
     return arctic.get_library("PORTFOLIO").read("ETFT.trend.RAW.SHARES").data
+
+
+def test_pnl_snapshot():
+    pnl = PnlSnapshot(pd.Timestamp("2024-04-26 00:00:00+00:00"))
+
+    pnl_1 = pnl.on_trade(100, 1, pd.Timestamp("2024-04-29 00:00:00+00:00"))
+
+    assert pnl_1.net_investment == 100
+    assert pnl_1.net_position == 1
+    assert pnl_1.realised_pnl == 0
+    assert pnl_1.unrealised_pnl == 0
+
+    pnl_2 = pnl.on_trade(101, -1, pd.Timestamp("2024-04-30 00:00:00+00:00"))
+    assert pnl_2.net_investment == 100
+    assert pnl_2.net_position == 1
+    assert pnl_2.realised_pnl == 1
+    assert pnl_2.unrealised_pnl == 0
+
+    pnl_2 = pnl.on_trade(101, -1, pd.Timestamp("2024-05-01 00:00:00+00:00"))
+    assert pnl_2.net_investment == 100
+    assert pnl_2.net_position == 1
+    assert pnl_2.realised_pnl == 1
+    assert pnl_2.unrealised_pnl == 0
 
 
 def test_backtest(prices: pd.DataFrame, portfolio: pd.DataFrame):
