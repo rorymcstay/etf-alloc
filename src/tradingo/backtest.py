@@ -1,11 +1,12 @@
 import logging
 import copy
 from typing import NamedTuple
+import arcticdb as adb
 
 import pandas as pd
 import numpy as np
 
-from tradingo.symbols import symbol_provider, symbol_publisher
+from tradingo.symbols import lib_provider, symbol_provider, symbol_publisher
 
 
 logger = logging.getLogger(__name__)
@@ -14,15 +15,17 @@ logger = logging.getLogger(__name__)
 class PnlSnapshot(NamedTuple):
 
     date: pd.Timestamp
-    net_position = 0
-    avg_open_price = 0
-    net_investment = 0
-    realised_pnl = 0
-    unrealised_pnl = 0
-    total_pnl = 0
-    last_qty = 0
-    last_trade_price = 0
-    last_trade_date = None
+    net_position: float = 0
+    avg_open_price: float = 0
+    net_investment: float = 0
+    realised_pnl: float = 0
+    unrealised_pnl: float = 0
+    total_pnl: float = 0
+    last_qty: float = 0
+    last_trade_price: float = 0
+    last_trade_date: pd.Timestamp = None
+    net_exposure: float = 0
+    last_price: float = 0
 
     def on_trade(
         self,
@@ -40,17 +43,17 @@ class PnlSnapshot(NamedTuple):
             self.net_investment, abs(self.net_position * self.avg_open_price)
         )
         # realized pnl
-        if not is_still_open and self.net_position:
-            # Remember to keep the sign as the net position
+        # Remember to keep the sign as the net position
+        if abs(self.net_position + trade_quantity) < abs(self.net_position):
             m_realised_pnl += (
                 (trade_price - self.avg_open_price)
-                * min(abs(trade_quantity), abs(self.net_position))
-                * (abs(self.net_position) / self.net_position)
+                * abs(trade_quantity)
+                * np.sign(self.net_position)
             )
         # total pnl
         m_total_pnl = m_realised_pnl + self.unrealised_pnl
         # avg open price
-        if is_still_open:
+        if abs(self.net_position + trade_quantity) > abs(self.net_position):
             m_avg_open_price = (
                 (m_avg_open_price * m_net_position) + (trade_price * trade_quantity)
             ) / (self.net_position + trade_quantity)
@@ -80,7 +83,12 @@ class PnlSnapshot(NamedTuple):
             unrealised_pnl=(last_price - self.avg_open_price) * self.net_position,
             total_pnl=self.realised_pnl + self.unrealised_pnl,
             date=date,
+            net_exposure=self.net_position * last_price,
+            last_price=last_price,
         )
+
+
+BACKTEST_FIELDS = [i for i in PnlSnapshot._fields if i != "date"]
 
 
 @symbol_provider(
@@ -88,9 +96,8 @@ class PnlSnapshot(NamedTuple):
     prices="ASSET_PRICES/ADJ_CLOSE.{provider}",
 )
 @symbol_publisher(
-    "BACKTEST/SUMMARY",
-    "BACKTEST/INSTRUMENT_RETURNS",
-    # backtest="BACKTEST/BACKTEST.{}",
+    "BACKTEST/PORTFOLIO",
+    *(f"BACKTEST/INSTRUMENT.{f}" for f in BACKTEST_FIELDS if f != "date"),
     symbol_prefix="{config_name}.{name}.",
 )
 def backtest(
@@ -130,30 +137,45 @@ def backtest(
 
             pnl_series.append(current_pnl)
 
-        return pd.DataFrame([i.to_dict() for i in pnl_series]).set_index(["date"])
+        return pd.DataFrame(pnl_series).set_index(["date"])
 
-    trades = pd.concat(
+    backtest = pd.concat(
         (compute_backtest(data) for _, data in trades.items()), keys=trades, axis=1
+    ).reorder_levels([1, 0], axis=1)
+
+    backtest_fields = (backtest.loc[:, f] for f in BACKTEST_FIELDS if f != "date")
+
+    net_exposure = (backtest["net_position"] * prices.ffill()).sum(axis=1)
+
+    summary = (
+        backtest[
+            [
+                "net_investment",
+                "unrealised_pnl",
+                "realised_pnl",
+                "total_pnl",
+            ]
+        ]
+        .groupby(level=0, axis=1)
+        .sum()
     )
+    summary["net_exposure"] = net_exposure
 
-    logger.info("Running %s %s backtest", stage, name)
+    return (summary, *backtest_fields)
 
-    returns = prices.pct_change() * portfolio
 
-    sharpe = (
-        returns.sum(axis=1).rolling(252).mean() / returns.sum(axis=1).rolling(252).std()
-    )
-
-    return (
-        pd.concat(
-            (
-                returns.sum(axis=1),
-                returns.sum(axis=1).cumsum(),
-                sharpe,
-            ),
-            axis=1,
-            keys=("RETURNS", "ACCOUNT", "SHARPE"),
+@lib_provider(backtests="BACKTEST")
+def get_instrument_backtest(*symbol, backtests=None):
+    return pd.concat(
+        (
+            i.data
+            for i in backtests.read_batch(
+                [
+                    adb.ReadRequest(columns=symbol, symbol=f"ETFT.trend.INSTRUMENT.{f}")
+                    for f in BACKTEST_FIELDS
+                ],
+            )
         ),
-        returns,
-        trades,
+        keys=BACKTEST_FIELDS,
+        axis=1,
     )

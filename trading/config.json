@@ -16,6 +16,26 @@
         "model_name": "trend"
       }
     },
+    "ewmac_64_32.scaled": {
+      "depends_on": [
+        "ewmac_64_32"
+      ],
+      "function": "scaled",
+      "kwargs": {
+        "scale": 20,
+        "signal": "ewmac_64_32"
+      }
+    },
+    "ewmac_64_32.scaled.capped": {
+      "depends_on": [
+        "ewmac_64_32.scaled"
+      ],
+      "function": "capped",
+      "kwargs": {
+        "cap": 15,
+        "signal": "ewmac_64_32.scaled"
+      }
+    },
     "ewmac_128_64": {
       "function": "ewmac_signal",
       "args": [],
@@ -24,13 +44,35 @@
         "speed2": 64,
         "model_name": "trend"
       }
+    },
+    "ewmac_128_64.scaled": {
+      "depends_on": [
+        "ewmac_64_32"
+      ],
+      "function": "scaled",
+      "kwargs": {
+        "scale": 1,
+        "signal": "ewmac_128_64",
+        "model_name": "trend"
+      }
+    },
+    "ewmac_128_64.scaled.capped": {
+      "depends_on": [
+        "ewmac_128_64.scaled"
+      ],
+      "function": "capped",
+      "kwargs": {
+        "cap": 0.75,
+        "signal": "ewmac_128_64.scaled",
+        "model_name": "trend"
+      }
     }
   },
   "portfolio": {
     "trend": {
       "signal_weights": {
-        "ewmac_64_32": 0.5,
-        "ewmac_128_64": 0.5
+        "ewmac_128_64.scaled.capped": 0.5,
+        "ewmac_64_32.scaled.capped": 0.5
       },
       "instrument_weights": {
         "asset_class": {

@@ -1,6 +1,8 @@
 import logging
+import random
 
 import pandas as pd
+import numpy as np
 
 import arcticdb as adb
 
@@ -50,7 +52,7 @@ def portfolio_construction(
     logger.info("signal_data: %s", signal_data)
 
     positions = (
-        signal_data.transpose().groupby(level=[1]).sum().transpose().ffill().fillna(0)
+        signal_data.transpose().groupby(level=[1]).prod().transpose().ffill().fillna(0)
     )
 
     if constraints["long_only"]:
@@ -61,3 +63,20 @@ def portfolio_construction(
     share_posiition = (pct_position * config["aum"]) / close
 
     return (pct_position, share_posiition)
+
+
+@symbol_provider(close="ASSET_PRICES/ADJ_CLOSE.{provider}")
+def instrument_ivol(close, provider, **kwargs):
+    pct_returns = np.log(close / close.shift())
+
+    ivols = []
+
+    for symbol in pct_returns.columns:
+        universe = pct_returns[
+            random.sample([c for c in pct_returns.columns if c != symbol], 100)
+        ]
+        vol = lambda uni: (1 - ((1 + uni).prod(axis=1).pow(1 / 100))).ewm(10).std()
+        ivol = vol(pd.concat((universe, pct_returns[symbol]), axis=1)) - vol(universe)
+        ivols.append(ivol.rename(symbol))
+
+    return pd.concat(ivols, axis=1)

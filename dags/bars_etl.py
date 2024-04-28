@@ -104,10 +104,14 @@ def calculate_trades(
     )
 
 
-def get_or_create_signal(name, signal, function, dag: DAG) -> Operator:
+def get_or_create_signal(
+    name, signal, function, config, depends_on, dag: DAG, prices
+) -> Operator:
+    print("getting ", name)
+    signal = signal.copy()
     task_id = make_task_id("signal", name)
     try:
-        return PythonOperator(
+        signal = PythonOperator(
             task_id=task_id,
             python_callable=getattr(signals, function),
             op_kwargs={
@@ -120,9 +124,26 @@ def get_or_create_signal(name, signal, function, dag: DAG) -> Operator:
                 **signal,
             },
         )
+        prices >> signal
 
     except DuplicateTaskIdFound:
-        return dag.get_task(task_id)
+        signal = dag.get_task(task_id)
+
+    for sig in depends_on:
+        signal_config = config["signal_configs"][sig]
+        _ = (
+            get_or_create_signal(
+                sig,
+                signal_config["kwargs"],
+                signal_config["function"],
+                config,
+                signal_config.get("depends_on", []),
+                dag,
+                prices,
+            )
+            >> signal
+        )
+    return signal
 
 
 DAG_DEFAULT_ARGS = {
@@ -192,14 +213,17 @@ with DAG(
         # )
 
         for signal in strategy["signal_weights"]:
-            signal_config = config["signal_configs"][signal]
+            signal_config = config["signal_configs"][signal].copy()
             _ = (
                 prices
                 >> get_or_create_signal(
                     signal,
                     signal_config["kwargs"],
-                    signal_config.pop("function"),
+                    signal_config["function"],
+                    config,
+                    signal_config.get("depends_on", []),
                     dag,
+                    prices,
                 )
                 >> pos
             )

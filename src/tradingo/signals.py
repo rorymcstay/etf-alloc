@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 
 import pandas as pd
 
@@ -34,10 +35,34 @@ def ewmac_signal(
         provider,
     )
 
-    returns = close.pct_change()
+    returns = np.log(close / close.shift())
 
     return (
-        (returns.ewm(halflife=speed2).mean() - returns.ewm(halflife=speed1).mean()),
+        (
+            close.ewm(halflife=speed2, min_periods=speed2).mean()
+            - close.ewm(halflife=speed1, min_periods=speed1).mean()
+        ),
         returns.ewm(halflife=speed1).std(),
         returns.ewm(halflife=speed2).std(),
     )
+
+
+@symbol_publisher(
+    "MODEL_SIGNALS/{signal}.scaled", symbol_prefix="{config_name}.{model_name}."
+)
+@symbol_provider(
+    signal="MODEL_SIGNALS/{signal}", symbol_prefix="{config_name}.{model_name}."
+)
+def scaled(signal, scale: float, **kwargs):
+    return ((signal / signal.abs().max()) * scale,)
+
+
+@symbol_publisher(
+    "MODEL_SIGNALS/{signal}.capped", symbol_prefix="{config_name}.{model_name}."
+)
+@symbol_provider(
+    signal="MODEL_SIGNALS/{signal}", symbol_prefix="{config_name}.{model_name}."
+)
+def capped(signal: pd.Series, cap: float, **kwargs):
+    signal[signal.abs() >= cap] = np.sign(signal) * cap
+    return (signal,)
