@@ -12,7 +12,7 @@ def arctic() -> adb.Arctic:
 
 @pytest.fixture
 def prices(arctic: adb.Arctic):
-    return arctic.get_library("ASSET_PRICES").read("ETFT.CLOSE.yfinane").data
+    return arctic.get_library("ASSET_PRICES").read("ETFT.CLOSE.yfinance").data
 
 
 @pytest.fixture
