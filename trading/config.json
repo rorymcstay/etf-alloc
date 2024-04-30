@@ -47,7 +47,7 @@
     },
     "ewmac_128_64.scaled": {
       "depends_on": [
-        "ewmac_64_32"
+        "ewmac_128_64"
       ],
       "function": "scaled",
       "kwargs": {
@@ -71,17 +71,18 @@
   "portfolio": {
     "trend": {
       "signal_weights": {
-        "ewmac_128_64.scaled.capped": 0.5,
-        "ewmac_64_32.scaled.capped": 0.5
+        "ewmac_128_64.scaled.capped": 1,
+        "ewmac_64_32.scaled.capped": 1
       },
       "instrument_weights": {
         "asset_class": {
-          "Commodities & Digital Assets": 0.1,
-          "Equity": 0.7,
-          "Fixed Income": 0.2
-        },
-        "multiplier": 0.0025
+          "Commodities & Digital Assets": 1,
+          "Equity": 1,
+          "Fixed Income": 1
+        }
       },
+      "multiplier": 1,
+      "default_weight": 1,
       "constraints": {
         "long_only": true
       }

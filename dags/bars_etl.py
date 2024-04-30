@@ -10,6 +10,7 @@ from airflow.exceptions import DuplicateTaskIdFound
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.models import Operator
+from airflow import decorators
 
 import arcticdb as adb
 import pandas as pd
@@ -17,7 +18,7 @@ import pandas as pd
 from tradingo.symbols import ARCTIC_URL, symbol_provider, symbol_publisher, lib_provider
 from tradingo import signals
 from tradingo.backtest import backtest
-from tradingo.portfolio import portfolio_construction
+from tradingo.portfolio import instrument_ivol, portfolio_construction
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,10 @@ Provider = Literal[
 ]
 
 
-def get_config():
-    return json.loads((HOME_DIR / "config.json").read_text())
+def get_config(config_path):
+    return json.loads(
+        (pathlib.Path(config_path) or (HOME_DIR / "config.json")).read_text()
+    )
 
 
 def get_instruments(config) -> pd.DataFrame:
@@ -60,7 +63,7 @@ def make_task_id(task, symbol=None) -> str:
 
 
 @symbol_publisher(
-    "ASSET_PRICES/CLOSE", "ASSET_PRICES/ADJ_CLOSE", symbol_postfix=".{provider}"
+    "prices/close", "prices/adj_close", symbol_prefix="{config_name}.{provider}."
 )
 def sample_prices(
     universe: list[str], start_date: str, end_date: str, provider: Provider, **kwargs
@@ -78,10 +81,10 @@ def sample_prices(
 
 
 @symbol_provider(
-    positions="PORTFOLIO/{name}.{stage}?as_of=-1",
-    previous_positions="PORTFOLIO/{name}.{stage}?as_of=-2",
+    positions="portfolio/{name}.{stage}?as_of=-1",
+    previous_positions="portfolio/{name}.{stage}?as_of=-2",
 )
-@symbol_publisher("TRADES/{stage}.{name}")
+@symbol_publisher("trades/{stage}.{name}")
 def calculate_trades(
     name: str,
     stage: str,
@@ -151,79 +154,102 @@ DAG_DEFAULT_ARGS = {
     "max_active_runs": 1,
 }
 
-config = get_config()
 
-
-with DAG(
-    dag_id=config["name"],
+def trading_dag(
+    dag_id,
+    config_path=str(HOME_DIR / "config.json"),
     start_date=datetime.fromisoformat("2024-04-25 00:00:00+00:00"),
     schedule="0 0 * * 1-5",
     catchup=True,
-    default_args=DAG_DEFAULT_ARGS,
-) as dag:
+):
+    with DAG(
+        dag_id=dag_id,
+        start_date=start_date,
+        schedule=schedule,
+        catchup=catchup,
+        default_args=DAG_DEFAULT_ARGS,
+    ) as dag:
+        config = get_config(config_path)
 
-    prices = PythonOperator(
-        task_id=make_task_id("sample_prices"),
-        python_callable=sample_prices,
-        op_kwargs={
-            "universe": get_instruments(config).index,
-            "start_date": START_DATE,
-            "end_date": "{{ data_interval_end }}",
-            "provider": PROVIDER,
-            "config_name": config["name"],
-        },
-    )
-
-    for name, strategy in config["portfolio"].items():
-        pos = PythonOperator(
-            task_id=make_task_id("portfolio_construction", name),
-            python_callable=portfolio_construction,
+        prices = PythonOperator(
+            task_id=make_task_id("sample_prices"),
+            python_callable=sample_prices,
+            op_kwargs={
+                "universe": get_instruments(config).index,
+                "start_date": START_DATE,
+                "end_date": "{{ data_interval_end }}",
+                "provider": PROVIDER,
+                "config_name": config["name"],
+            },
+        )
+        ivol = PythonOperator(
+            task_id=make_task_id("ivol"),
+            python_callable=instrument_ivol,
             op_kwargs={
                 "start_date": START_DATE,
                 "end_date": "{{ data_interval_end }}",
-                "name": name,
-                "config_name": config["name"],
                 "provider": PROVIDER,
+                "config_name": config["name"],
             },
         )
-        _ = pos >> PythonOperator(
-            task_id=make_task_id("backtest", name),
-            python_callable=backtest,
-            op_kwargs={
-                "start_date": START_DATE,
-                "end_date": "{{ data_interval_end }}",
-                "name": name,
-                "stage": "RAW",
-                "config_name": config["name"],
-                "provider": PROVIDER,
-            },
-        )
-        # _ = pos >> PythonOperator(
-        #    task_id=make_task_id("calculate_trades", name),
-        #    python_callable=calculate_trades,
-        #    op_kwargs={
-        #        "start_date": START_DATE,
-        #        "end_date": "{{ data_interval_end }}",
-        #        "previous_refdate": "{{ data_interval_start }}",
-        #        "name": name,
-        #        "stage": "RAW",
-        #        "provider": PROVIDER,
-        #        "config_name": config["name"],
-        #    },
-        # )
 
-        for signal in strategy["signal_weights"]:
-            signal_config = config["signal_configs"][signal].copy()
-            _ = (
-                prices
-                >> get_or_create_signal(
-                    signal,
-                    signal_config["kwargs"],
-                    signal_config["function"],
-                    config,
-                    signal_config.get("depends_on", []),
-                    dag,
-                    prices,
-                )
-                >> pos
+        _ = prices >> ivol
+
+        for name, strategy in config["portfolio"].items():
+            pos = PythonOperator(
+                task_id=make_task_id("portfolio_construction", name),
+                python_callable=portfolio_construction,
+                op_kwargs={
+                    "start_date": START_DATE,
+                    "end_date": "{{ data_interval_end }}",
+                    "name": name,
+                    "config_name": config["name"],
+                    "provider": PROVIDER,
+                },
             )
+            _ = pos >> PythonOperator(
+                task_id=make_task_id("backtest", name),
+                python_callable=backtest,
+                op_kwargs={
+                    "start_date": START_DATE,
+                    "end_date": "{{ data_interval_end }}",
+                    "name": name,
+                    "stage": "raw",
+                    "config_name": config["name"],
+                    "provider": PROVIDER,
+                },
+            )
+            # _ = pos >> PythonOperator(
+            #    task_id=make_task_id("calculate_trades", name),
+            #    python_callable=calculate_trades,
+            #    op_kwargs={
+            #        "start_date": START_DATE,
+            #        "end_date": "{{ data_interval_end }}",
+            #        "previous_refdate": "{{ data_interval_start }}",
+            #        "name": name,
+            #        "stage": "raw",
+            #        "provider": PROVIDER,
+            #        "config_name": config["name"],
+            #    },
+            # )
+
+            for signal in strategy["signal_weights"]:
+                signal_config = config["signal_configs"][signal].copy()
+                _ = (
+                    prices
+                    >> get_or_create_signal(
+                        signal,
+                        signal_config["kwargs"],
+                        signal_config["function"],
+                        config,
+                        signal_config.get("depends_on", []),
+                        dag,
+                        prices,
+                    )
+                    >> pos
+                )
+
+    return dag
+
+
+etft = trading_dag(dag_id="ETFT")

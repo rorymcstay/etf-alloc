@@ -97,7 +97,9 @@ def symbol_provider(
     return decorator
 
 
-def symbol_publisher(*symbols, symbol_prefix="{config_name}.", symbol_postfix=""):
+def symbol_publisher(
+    *symbols, symbol_prefix="{config_name}.", symbol_postfix="", astype=None
+):
 
     def decorator(func):
 
@@ -113,7 +115,14 @@ def symbol_publisher(*symbols, symbol_prefix="{config_name}.", symbol_postfix=""
 
             for data, symbol in zip(out, symbols):
 
-                logger.debug(
+                if astype:
+                    data = data.astype(
+                        astype
+                        if not isinstance(astype, dict)
+                        else {k: v for k, v in astype.items() if k in data.columns}
+                    )
+
+                logger.info(
                     "writing symbol=%s rows=%s",
                     parse_symbol(symbol, kwargs, symbol_prefix, symbol_postfix),
                     len(data.index),
@@ -127,7 +136,6 @@ def symbol_publisher(*symbols, symbol_prefix="{config_name}.", symbol_postfix=""
                 )
 
                 if not dry_run:
-
                     arctic.get_library(lib, create_if_missing=True).update(
                         sym, data, upsert=True, **params
                     )

@@ -9,11 +9,11 @@ from tradingo.symbols import symbol_provider, symbol_publisher
 logger = logging.getLogger(__name__)
 
 
-@symbol_provider(close="ASSET_PRICES/ADJ_CLOSE.{provider}")
+@symbol_provider(close="prices/{provider}.adj_close")
 @symbol_publisher(
-    "MODEL_SIGNALS/{signal_name}",
-    "MODEL_SIGNALS/vol_{speed1}",
-    "MODEL_SIGNALS/vol_{speed2}",
+    "signals/{signal_name}",
+    "signals/vol_{speed1}",
+    "signals/vol_{speed2}",
     symbol_prefix="{config_name}.{model_name}.",
 )
 def ewmac_signal(
@@ -48,21 +48,17 @@ def ewmac_signal(
 
 
 @symbol_publisher(
-    "MODEL_SIGNALS/{signal}.scaled", symbol_prefix="{config_name}.{model_name}."
+    "signals/{signal}.scaled", symbol_prefix="{config_name}.{model_name}."
 )
-@symbol_provider(
-    signal="MODEL_SIGNALS/{signal}", symbol_prefix="{config_name}.{model_name}."
-)
+@symbol_provider(signal="signals/{signal}", symbol_prefix="{config_name}.{model_name}.")
 def scaled(signal, scale: float, **kwargs):
     return ((signal / signal.abs().max()) * scale,)
 
 
 @symbol_publisher(
-    "MODEL_SIGNALS/{signal}.capped", symbol_prefix="{config_name}.{model_name}."
+    "signals/{signal}.capped", symbol_prefix="{config_name}.{model_name}."
 )
-@symbol_provider(
-    signal="MODEL_SIGNALS/{signal}", symbol_prefix="{config_name}.{model_name}."
-)
+@symbol_provider(signal="signals/{signal}", symbol_prefix="{config_name}.{model_name}.")
 def capped(signal: pd.Series, cap: float, **kwargs):
     signal[signal.abs() >= cap] = np.sign(signal) * cap
     return (signal,)

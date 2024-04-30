@@ -92,19 +92,19 @@ BACKTEST_FIELDS = [i for i in PnlSnapshot._fields if i != "date"]
 
 
 @symbol_provider(
-    portfolio="PORTFOLIO/{name}.{stage}.SHARES",
-    prices="ASSET_PRICES/ADJ_CLOSE.{provider}",
+    portfolio="portfolio/{name}.{stage}.shares",
+    prices="prices/{provider}.close",
 )
 @symbol_publisher(
-    "BACKTEST/PORTFOLIO",
-    *(f"BACKTEST/INSTRUMENT.{f}" for f in BACKTEST_FIELDS if f != "date"),
+    "backtest/portfolio",
+    *(f"backtest/instrument.{f}" for f in BACKTEST_FIELDS if f != "date"),
     symbol_prefix="{config_name}.{name}.",
 )
 def backtest(
     portfolio: pd.DataFrame,
     prices: pd.DataFrame,
     name: str,
-    stage: str = "RAW",
+    stage: str = "raw",
     **kwargs,
 ):
     trades = portfolio.ffill().fillna(0.0).round().diff()
@@ -122,8 +122,6 @@ def backtest(
 
         pnl_series = []
 
-        pnl_series.append(current_pnl)
-
         data = pd.concat(
             (inst_trades.rename("trade"), inst_prices.rename("price")), axis=1
         )
@@ -137,7 +135,17 @@ def backtest(
 
             pnl_series.append(current_pnl)
 
-        return pd.DataFrame(pnl_series).set_index(["date"])
+        return (
+            pd.DataFrame(pnl_series)
+            .set_index(["date"])
+            .astype(
+                {
+                    k: v
+                    for k, v in PnlSnapshot.__annotations__.items()
+                    if "date" not in k
+                }
+            )
+        )
 
     backtest = pd.concat(
         (compute_backtest(data) for _, data in trades.items()), keys=trades, axis=1
@@ -164,7 +172,7 @@ def backtest(
     return (summary, *backtest_fields)
 
 
-@lib_provider(backtests="BACKTEST")
+@lib_provider(backtests="backtest")
 def get_instrument_backtest(*symbol, backtests=None):
     return pd.concat(
         (
