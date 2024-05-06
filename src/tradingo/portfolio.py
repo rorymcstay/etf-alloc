@@ -18,7 +18,11 @@ DEFAULT_AUM = 100_000
 
 
 @lib_provider(model_signals="signals")
-@symbol_provider(close="prices/{provider}.close", ivol="prices/{provider}.ivol")
+@symbol_provider(
+    close="prices/{provider}.close",
+    ivol="prices/{provider}.ivol",
+    vol="signals/{name}.vol_128",
+)
 @symbol_publisher(
     "portfolio/raw.percent",
     "portfolio/raw.shares",
@@ -26,7 +30,12 @@ DEFAULT_AUM = 100_000
     symbol_prefix="{config_name}.{name}.",
 )
 def portfolio_construction(
-    name: str, model_signals: adb.library.Library, close: pd.DataFrame, ivol, **kwargs
+    name: str,
+    model_signals: adb.library.Library,
+    close: pd.DataFrame,
+    ivol: pd.DataFrame,
+    vol: pd.DataFrame,
+    **kwargs,
 ):
 
     ivol = ivol.iloc[-1].sort_values(ascending=False)
@@ -72,6 +81,7 @@ def portfolio_construction(
         .transpose()
         .ffill()
         .fillna(0)
+        .div(10 * vol)
     )
 
     logger.info("signal_data: %s", signal_value)

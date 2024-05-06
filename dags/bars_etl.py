@@ -252,4 +252,4 @@ def trading_dag(
     return dag
 
 
-etft = trading_dag(dag_id="ETFT")
+etft = trading_dag(dag_id="ETFT", start_date=pd.Timestamp("2024-05-02 00:00:00+00:00"))
