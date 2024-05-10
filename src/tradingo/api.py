@@ -10,6 +10,13 @@ class _Read:
         self.path_so_far = path_so_far
         self.library = library
         self.assets = assets
+        self.path = ".".join(self.path_so_far)
+
+    def __dir__(self):
+        return self.list()
+
+    def __repr__(self):
+        return f'Namespace("{self.path}")'
 
     def __getattr__(self, symbol):
         return self.__class__(
@@ -22,14 +29,22 @@ class _Read:
             if all(i in self.path_so_far for i in ("backtest", "portfolio"))
             else []
         )
-        return self.library.read(
-            ".".join(self.path_so_far), *args, **kwargs, columns=assets
-        ).data
+        return self.library.read(self.path, *args, **kwargs, columns=assets).data
+
+    def update(self, *args, **kwargs):
+        self.library.update(self.path, *args, **kwargs)
 
     def list(self, *args, **kwargs):
         regex = re.escape(".".join((self.path_so_far)) + ".")
         kwargs["regex"] = regex + kwargs.setdefault("regex", "")
-        return self.library.list_symbols(*args, **kwargs)
+        return list(
+            dict.fromkeys(
+                [
+                    i.replace(f'{".".join(self.path_so_far)}.', "").split(".")[0]
+                    for i in self.library.list_symbols(*args, **kwargs)
+                ]
+            )
+        )
 
     def exists(self):
         pass
@@ -61,3 +76,6 @@ class Tradingo(adb.Arctic):
             )
 
         return super().__getattr__(library)
+
+    def __dir__(self):
+        return [*self.list_libraries(), *super().__dir__()]
