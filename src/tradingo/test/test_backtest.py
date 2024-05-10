@@ -3,22 +3,23 @@ import pandas as pd
 import arcticdb as adb
 
 from tradingo import backtest
+from tradingo.api import Tradingo
 from tradingo.backtest import PnlSnapshot
 
 
 @pytest.fixture
 def arctic() -> adb.Arctic:
-    return adb.Arctic("lmdb:///home/rory/dev/airflow/test/arctic.db")
+    return Tradingo("ETFT", "yfinance", "lmdb:///home/rory/dev/airflow/test/arctic.db")
 
 
 @pytest.fixture
 def prices(arctic: adb.Arctic):
-    return arctic.get_library("ASSET_PRICES").read("ETFT.CLOSE.yfinance").data
+    return arctic.prices.close()
 
 
 @pytest.fixture
 def portfolio(arctic: adb.Arctic):
-    return arctic.get_library("PORTFOLIO").read("ETFT.trend.RAW.SHARES").data
+    return arctic.portfolio.trend.raw.percent()
 
 
 def test_pnl_snapshot():

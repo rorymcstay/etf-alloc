@@ -11,9 +11,12 @@ def stock_data() -> pd.DataFrame:
     annual_std = 0.12
 
     returns = pd.DataFrame(
-        np.random.normal(0, annual_std / np.sqrt(260), 100),
+        np.random.normal(0, annual_std / np.sqrt(260), (100, 60)),
         index=pd.bdate_range(start="2024-01-03 00:00:00+00:00", periods=100),
-        columns="".join(np.random.choice(list(string.ascii_uppercase), 4)),
+        columns=[
+            "".join(np.random.choice(list(string.ascii_uppercase), 4))
+            for _ in range(100)
+        ],
     )
     return (1 + returns).cumprod()
 
