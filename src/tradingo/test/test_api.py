@@ -3,6 +3,7 @@ import string
 import numpy as np
 import pandas as pd
 from tradingo.api import Tradingo
+from tradingo.utils import null_instruments
 
 
 @pytest.fixture
@@ -15,7 +16,7 @@ def stock_data() -> pd.DataFrame:
         index=pd.bdate_range(start="2024-01-03 00:00:00+00:00", periods=100),
         columns=[
             "".join(np.random.choice(list(string.ascii_uppercase), 4))
-            for _ in range(100)
+            for _ in range(60)
         ],
     )
     return (1 + returns).cumprod()
@@ -23,11 +24,11 @@ def stock_data() -> pd.DataFrame:
 
 @pytest.fixture
 def tradingo(stock_data: pd.DataFrame) -> Tradingo:
-    t = Tradingo("ETFT", "yfinance", "mem://tradingo")
+    t = Tradingo("test", "yfinance", "mem://tradingo")
     libraries = ["prices", "signals", "backtest", "portfolio", "instruments"]
     for library in libraries:
         t.create_library(library)
-
+    t.instruments.etfs.update(null_instruments(stock_data.columns), upsert=True)
     t.prices.close.update(stock_data, upsert=True)
     return t
 
@@ -35,7 +36,7 @@ def tradingo(stock_data: pd.DataFrame) -> Tradingo:
 def test_tradingo_api(tradingo: Tradingo):
 
     df = tradingo.prices.close()
-    print(df)
+    return df
 
 
 if __name__ == "__main__":

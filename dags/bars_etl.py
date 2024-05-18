@@ -3,14 +3,12 @@ import os
 import json
 import pathlib
 import re
-from typing import Literal
 from datetime import datetime
 from airflow.exceptions import DuplicateTaskIdFound
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.models import Operator
-from airflow import decorators
 
 import arcticdb as adb
 import pandas as pd
@@ -19,6 +17,7 @@ from tradingo.symbols import ARCTIC_URL, symbol_provider, symbol_publisher, lib_
 from tradingo import signals
 from tradingo.backtest import backtest
 from tradingo.portfolio import instrument_ivol, portfolio_construction
+from tradingo import sampling
 
 logger = logging.getLogger(__name__)
 
@@ -29,18 +28,6 @@ PROVIDER = "yfinance"
 AUM = 70_000
 ARCTIC = adb.Arctic(ARCTIC_URL)
 
-Provider = Literal[
-    "alpha_vantage",
-    "cboe",
-    "fmp",
-    "intrinio",
-    "polygon",
-    "tiingo",
-    "tmx",
-    "tradier",
-    "yfinance",
-]
-
 
 def get_config(config_path):
     return json.loads(
@@ -48,10 +35,10 @@ def get_config(config_path):
     )
 
 
-def get_instruments(config) -> pd.DataFrame:
+def get_instruments(config, key="equity") -> pd.DataFrame:
     return pd.read_csv(
-        config["universe"]["file"],
-        index_col=config["universe"]["index_col"],
+        config[key]["file"],
+        index_col=config[key]["index_col"],
     ).rename_axis("Symbol")
 
 
@@ -60,24 +47,6 @@ def make_task_id(task, symbol=None) -> str:
         symbol = re.sub(r"\^|/", ".", str(symbol).strip())
         return f"{task}_{symbol}"
     return task
-
-
-@symbol_publisher(
-    "prices/close", "prices/adj_close", symbol_prefix="{config_name}.{provider}."
-)
-def sample_prices(
-    universe: list[str], start_date: str, end_date: str, provider: Provider, **kwargs
-):
-    from openbb import obb
-
-    data = obb.equity.price.historical(  # type: ignore
-        universe, start_date=start_date, end_date=end_date, provider=provider
-    ).to_dataframe()
-
-    close = data.pivot(columns=["symbol"], values="close")
-    close.index = pd.to_datetime(close.index)
-
-    return (close, 100 * (1 + close.pct_change()).cumprod())
 
 
 @symbol_provider(
@@ -127,7 +96,7 @@ def get_or_create_signal(
                 **signal,
             },
         )
-        prices >> signal
+        _ = prices >> signal
 
     except DuplicateTaskIdFound:
         signal = dag.get_task(task_id)
@@ -172,16 +141,44 @@ def trading_dag(
         config = get_config(config_path)
 
         prices = PythonOperator(
-            task_id=make_task_id("sample_prices"),
-            python_callable=sample_prices,
+            task_id=make_task_id("sample_equity"),
+            python_callable=sampling.sample_equity,
             op_kwargs={
-                "universe": get_instruments(config).index,
+                "universe": get_instruments(config, "equity").index,
                 "start_date": START_DATE,
                 "end_date": "{{ data_interval_end }}",
                 "provider": PROVIDER,
                 "config_name": config["name"],
             },
         )
+
+        if "futures" in config:
+
+            _ = PythonOperator(
+                task_id="sample_futures",
+                python_callable=sampling.sample_futures,
+                op_kwargs=dict(
+                    universe=config["futures"],
+                    provider="cboe",
+                    start_date="{{ data_interval_start }}",
+                    end_date="{{ data_interval_end }}",
+                    config_name=config["name"],
+                ),
+            )
+
+        if "options" in config:
+
+            _ = PythonOperator(
+                task_id="sample_options",
+                python_callable=sampling.sample_options,
+                op_kwargs=dict(
+                    universe=config["options"],
+                    provider="cboe",
+                    start_date="{{ data_interval_start }}",
+                    end_date="{{ data_interval_end }}",
+                    config_name=config["name"],
+                ),
+            )
         ivol = PythonOperator(
             task_id=make_task_id("ivol"),
             python_callable=instrument_ivol,
@@ -252,4 +249,4 @@ def trading_dag(
     return dag
 
 
-etft = trading_dag(dag_id="ETFT", start_date=pd.Timestamp("2024-05-02 00:00:00+00:00"))
+etft = trading_dag(dag_id="ETFT", start_date=pd.Timestamp("2024-05-09 00:00:00+00:00"))

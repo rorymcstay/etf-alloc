@@ -11,10 +11,10 @@ def get_config():
     return json.loads((HOME_DIR / "config.json").read_text())
 
 
-def get_instruments(config) -> pd.DataFrame:
+def get_instruments(config, key="equity") -> pd.DataFrame:
     return pd.read_csv(
-        config["universe"]["file"],
-        index_col=config["universe"]["index_col"],
+        config[key]["file"],
+        index_col=config[key]["index_col"],
         parse_dates=["Incept. Date"],
         date_format="%b %d, %Y",
     ).rename_axis("Symbol")
@@ -35,6 +35,38 @@ def with_instrument_details(
         .sort_index()
         .transpose()
     ).dropna()
+
+
+def null_instruments(symbols):
+    return pd.DataFrame(
+        data="",
+        index=symbols,
+        columns=[
+            "Name",
+            "SEDOL",
+            "ISIN",
+            "CUSIP",
+            "Incept. Date",
+            "Gross Expense Ratio (%)",
+            "Net Expense Ratio (%)",
+            "Net Assets (USD)",
+            "Net Assets as of",
+            "Asset Class",
+            "Sub Asset Class",
+            "Region",
+            "Market",
+            "Location",
+            "Investment Style",
+            "Key Facts",
+            "Avg. Annual Return: NAV Quarterly",
+            "Avg. Annual Return: Price Quarterly",
+            "Avg. Annual Return: NAV Monthly",
+            "Avg. Annual Return: Price Monthly",
+            "Yield",
+            "Fixed Income Characteristics",
+            "Sustainability Characteristics (MSCI ESG Fund Ratings)",
+        ],
+    )
 
 
 def buffer(

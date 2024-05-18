@@ -1,6 +1,5 @@
 import pytest
 import pandas as pd
-import arcticdb as adb
 
 from tradingo import backtest
 from tradingo.api import Tradingo
@@ -8,17 +7,33 @@ from tradingo.backtest import PnlSnapshot
 
 
 @pytest.fixture
-def arctic() -> adb.Arctic:
+def arctic() -> Tradingo:
     return Tradingo("ETFT", "yfinance", "lmdb:///home/rory/dev/airflow/test/arctic.db")
 
 
 @pytest.fixture
-def prices(arctic: adb.Arctic):
+def prices(arctic: Tradingo):
     return arctic.prices.close()
 
 
 @pytest.fixture
-def portfolio(arctic: adb.Arctic):
+def constant_returns_prices():
+
+    daily_return = 0.01
+    idx = pd.bdate_range("2020-01-01", periods=260, freq="B")
+    return pd.DataFrame(1 + daily_return, index=idx, columns=["ABCD"]).cumprod()
+
+
+@pytest.fixture
+def constant_position():
+
+    position = 1
+    idx = pd.bdate_range("2020-01-01", periods=260, freq="B")
+    return pd.DataFrame(position, index=idx, columns=["ABCD"])
+
+
+@pytest.fixture
+def portfolio(arctic: Tradingo):
     return arctic.portfolio.trend.raw.percent()
 
 
@@ -67,6 +82,27 @@ def test_backtest(prices: pd.DataFrame, portfolio: pd.DataFrame):
     )
 
     assert isinstance(bt[-1], pd.DataFrame)
+
+
+def test_backtest_constant_return(constant_returns_prices, constant_position):
+
+    portfolio, *fields = backtest.backtest(
+        portfolio=constant_position,
+        prices=constant_returns_prices,
+        name="test",
+        config_name="test",
+        dry_run=True,
+        start_date=constant_returns_prices.index[0],
+        end_date=constant_returns_prices.index[-1],
+        stage="raw",
+    )
+
+    pd.testing.assert_series_equal(
+        portfolio["unrealised_pnl"].diff() / 2,
+        (constant_position * constant_returns_prices.diff()).squeeze(),
+        check_names=False,
+        check_freq=False,
+    )
 
 
 if __name__ == "__main__":

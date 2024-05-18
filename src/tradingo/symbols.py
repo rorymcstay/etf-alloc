@@ -98,7 +98,12 @@ def symbol_provider(
 
 
 def symbol_publisher(
-    *symbols, symbol_prefix="{config_name}.", symbol_postfix="", astype=None
+    *symbols,
+    symbol_prefix="{config_name}.",
+    symbol_postfix="",
+    astype=None,
+    template=None,
+    library_options=None,
 ):
 
     def decorator(func):
@@ -112,8 +117,14 @@ def symbol_publisher(
 
             # if kws:
             #    kwdout = out.pop(-1)
+            #
+            if template:
+                out, symbols_ = list(zip(*out))
+                symbols_ = [template.format(*s) for s in symbols_]
+            else:
+                symbols_ = symbols
 
-            for data, symbol in zip(out, symbols):
+            for data, symbol in zip(out, symbols_):
 
                 if astype:
                     data = data.astype(
@@ -136,9 +147,9 @@ def symbol_publisher(
                 )
 
                 if not dry_run:
-                    arctic.get_library(lib, create_if_missing=True).update(
-                        sym, data, upsert=True, **params
-                    )
+                    arctic.get_library(
+                        lib, create_if_missing=True, library_options=library_options
+                    ).update(sym, data, upsert=True, **params)
                 else:
                     return out
 

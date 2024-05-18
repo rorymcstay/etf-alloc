@@ -1,35 +1,54 @@
-import re
+import contextlib
 import pandas as pd
-from tradingo.utils import get_instruments
+from datetime import datetime
+import re
 import arcticdb as adb
 
 
 class _Read:
 
-    def __init__(self, path_so_far, library: adb.library.Library, assets):
+    def __init__(
+        self,
+        path_so_far,
+        library: adb.library.Library,
+        assets,
+        common_args,
+        common_kwargs,
+    ):
         self.path_so_far = path_so_far
         self.library = library
         self.assets = assets
         self.path = ".".join(self.path_so_far)
+        self.common_args = common_args
+        self.common_kwargs = common_kwargs
 
     def __dir__(self):
-        return self.list()
+        return [*self.list(), *super().__dir__()]
 
     def __repr__(self):
         return f'Namespace("{self.path}")'
 
     def __getattr__(self, symbol):
         return self.__class__(
-            (*self.path_so_far, symbol), library=self.library, assets=self.assets
+            (*self.path_so_far, symbol),
+            library=self.library,
+            assets=self.assets,
+            common_args=self.common_args,
+            common_kwargs=self.common_kwargs,
         )
 
     def __call__(self, *args, **kwargs):
-        assets = (
-            self.assets
-            if all(i in self.path_so_far for i in ("backtest", "portfolio"))
-            else []
+        kwargs.setdefault(
+            "columns",
+            (
+                self.assets
+                if all(i in self.path_so_far for i in ("backtest", "portfolio"))
+                else []
+            ),
         )
-        return self.library.read(self.path, *args, **kwargs, columns=assets).data
+        return self.library.read(
+            self.path, *args, *self.common_args, **kwargs, **self.common_kwargs
+        ).data
 
     def update(self, *args, **kwargs):
         self.library.update(self.path, *args, **kwargs)
@@ -46,6 +65,12 @@ class _Read:
             )
         )
 
+    def head(self, *args, **kwargs):
+        return self.library.head(self.path, *args, **kwargs).data
+
+    def tail(self, *args, **kwargs):
+        return self.library.tail(self.path, *args, **kwargs).data
+
     def exists(self):
         pass
 
@@ -56,6 +81,18 @@ class Tradingo(adb.Arctic):
         super().__init__(*args, **kwargs)
         self.name = name
         self.provider = provider
+        self._context_args = ()
+        self._context_kwargs = {}
+
+    @contextlib.contextmanager
+    def common_args(self, *args, **kwargs):
+        try:
+            self._context_args = args
+            self._context_kwargs = kwargs
+            yield self
+        finally:
+            self._context_args = ()
+            self._context_kwargs = {}
 
     def __getattr__(self, library):
 
@@ -68,14 +105,76 @@ class Tradingo(adb.Arctic):
                     library=self.get_library(library),
                     path_so_far=path_so_far,
                     assets=[],
+                    common_args=(),
+                    common_kwargs={},
                 )
             return _Read(
                 library=self.get_library(library),
                 path_so_far=path_so_far,
                 assets=self.instruments.etfs().index.to_list(),
+                common_args=self._context_args,
+                common_kwargs=self._context_kwargs,
             )
 
         return super().__getattr__(library)
 
     def __dir__(self):
         return [*self.list_libraries(), *super().__dir__()]
+
+
+class VolSurface(Tradingo):
+
+    def get(
+        self,
+        symbol: str,
+        start_date: pd.Timestamp = pd.Timestamp("1970-01-01 00:00+00:00"),
+        end_date: pd.Timestamp = pd.Timestamp.now("utc"),
+        **kwargs,
+    ):
+
+        with self.common_args(date_range=(start_date, end_date)):
+
+            futures = (
+                pd.concat(
+                    (self.futures.cboe.VX.expiration(), t.futures.cboe.VX.price()),
+                    axis=1,
+                    keys=("expiration", "price"),
+                )
+                .stack()
+                .astype({"expiration": "datetime64[ns]"})
+                .reset_index()
+                .set_index(["timestamp", "symbol"])
+            )
+
+            library = getattr(self.options.cboe, symbol)
+            option_chains = pd.concat(
+                (
+                    library.expiration(),
+                    library.option_type(),
+                    library.strike(),
+                    library.bid(),
+                    library.ask(),
+                    library.implied_volatility(),
+                    library.delta(),
+                    library.vega(),
+                    library.gamma(),
+                    library.theta(),
+                    library.rho(),
+                ),
+                axis=1,
+                keys=(
+                    "expiration",
+                    "option_type",
+                    "strike",
+                    "bid",
+                    "ask",
+                    "implied_volatility",
+                    "delta",
+                    "vega",
+                    "gamma",
+                    "theta",
+                    "rho",
+                ),
+            ).stack(future_stack=True)
+
+        return option_chains.merge(futures, on=["timestamp", "expiration"], how="left")

@@ -37,13 +37,11 @@ class PnlSnapshot(NamedTuple):
         m_net_position = self.net_position
         m_realised_pnl = self.realised_pnl
         m_avg_open_price = self.avg_open_price
-        is_still_open = abs(self.net_position + trade_quantity) > 0
         # net investment
         m_net_investment = max(
             self.net_investment, abs(self.net_position * self.avg_open_price)
         )
         # realized pnl
-        # Remember to keep the sign as the net position
         if abs(self.net_position + trade_quantity) < abs(self.net_position):
             m_realised_pnl += (
                 (trade_price - self.avg_open_price)
@@ -79,9 +77,10 @@ class PnlSnapshot(NamedTuple):
         )
 
     def on_market_data(self, last_price: float, date: pd.Timestamp):
+        unrealised_pnl = (last_price - self.avg_open_price) * self.net_position
         return self._replace(
-            unrealised_pnl=(last_price - self.avg_open_price) * self.net_position,
-            total_pnl=self.realised_pnl + self.unrealised_pnl,
+            unrealised_pnl=unrealised_pnl,
+            total_pnl=self.realised_pnl + unrealised_pnl,
             date=date,
             net_exposure=self.net_position * last_price,
             last_price=last_price,
@@ -101,23 +100,31 @@ BACKTEST_FIELDS = [i for i in PnlSnapshot._fields if i != "date"]
     symbol_prefix="{config_name}.{name}.",
 )
 def backtest(
+    *,
     portfolio: pd.DataFrame,
     prices: pd.DataFrame,
     name: str,
     stage: str = "raw",
     **kwargs,
 ):
-    trades = portfolio.ffill().fillna(0.0).round().diff()
+    trades = portfolio.ffill().fillna(0.0).diff()
+    trades.iloc[0] = portfolio.iloc[0]
     prices = prices.ffill()
+
+    logger.info("running backtest for %s on stage %s with %s", name, stage, kwargs)
 
     def compute_backtest(inst_trades: pd.Series):
 
         ticker: str = inst_trades.name
         logger.warning("Computing backtest for ticker=%s", ticker)
         inst_prices = prices[ticker].ffill()
+        opening_position = portfolio.loc[portfolio.first_valid_index(), ticker]
+        opening_avg_price = prices.loc[portfolio.first_valid_index(), ticker]
 
         current_pnl = PnlSnapshot(
-            date=inst_trades.first_valid_index() - pd.offsets.BDay(1)
+            date=inst_trades.first_valid_index() - pd.offsets.BDay(1),
+            net_position=opening_position,
+            avg_open_price=opening_avg_price,
         )
 
         pnl_series = []

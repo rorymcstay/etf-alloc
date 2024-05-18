@@ -1,10 +1,17 @@
 {
   "name": "ETFT",
   "provider": "yfinance",
-  "universe": {
+  "equity": {
     "file": "/home/rory/dev/airflow/trading/universe.csv",
     "index_col": "Ticker"
   },
+  "futures": [
+    "VX"
+  ],
+  "options": [
+    "VIX",
+    "ES"
+  ],
   "aum": 70000,
   "signal_configs": {
     "ewmac_64_32": {
