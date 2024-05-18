@@ -8,6 +8,7 @@ from tradingo.api import Tradingo
 from tradingo.backtest import PnlSnapshot
 
 from tradingo.test.fixtures import position, prices, tradingo
+from tradingo.test.utils import close_position
 
 
 def test_pnl_snapshot():
@@ -88,8 +89,24 @@ def test_backtest_integration(benchmark, tradingo):
                 index=pd.bdate_range("2020-01-01", periods=260, freq="B"),
                 columns=["ABCD"],
             ),
-            "(prices*portfolio.shift()).squeeze().diff()",
+            "(prices.diff()*portfolio.shift()).squeeze()",
             "pd.Series(0.0, index=prices.index)",
+        ),
+        (
+            pd.DataFrame(
+                1 + 0.01,
+                index=pd.bdate_range("2020-01-01", periods=260, freq="B"),
+                columns=["ABCD"],
+            ).cumprod(),
+            close_position(
+                pd.DataFrame(
+                    1,
+                    index=pd.bdate_range("2020-01-01", periods=260, freq="B"),
+                    columns=["ABCD"],
+                ).cumprod(),
+            ),
+            "(prices.diff()*portfolio.shift()).squeeze()",
+            "pd.Series([*(0 for _ in range(0, 259)), 12.280985478055433], index=prices.index)",
         ),
     ],
 )
@@ -106,15 +123,26 @@ def test_backtest(prices, portfolio, unrealised_pnl, realised_pnl):
         stage="raw",
     )
 
+    actual_unrealised = bt["backtest/instrument.unrealised_pnl"].squeeze().diff()
+    expected_unrealised = (
+        eval(unrealised_pnl) if isinstance(unrealised_pnl, str) else unrealised_pnl
+    )
+
     pd.testing.assert_series_equal(
-        bt["backtest/instrument.unrealised_pnl"].squeeze().diff(),
-        (eval(unrealised_pnl) if isinstance(unrealised_pnl, str) else unrealised_pnl),
+        actual_unrealised,
+        expected_unrealised,
         check_names=False,
         check_freq=False,
     )
+    actual_realised = (
+        bt["backtest/instrument.realised_pnl"].squeeze().diff().fillna(0.0)
+    )
+    expected_realised = (
+        eval(realised_pnl) if isinstance(realised_pnl, str) else realised_pnl
+    )
     pd.testing.assert_series_equal(
-        bt["backtest/instrument.realised_pnl"].squeeze().diff().fillna(0.0),
-        (eval(realised_pnl) if isinstance(realised_pnl, str) else realised_pnl),
+        actual_realised,
+        expected_realised,
         check_names=False,
         check_freq=False,
     )

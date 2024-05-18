@@ -2,7 +2,7 @@ import pytest
 
 from tradingo.api import Tradingo
 
-from tradingo.test.fixtures import stock_data, tradingo
+from tradingo.test.fixtures import prices, tradingo, position
 
 
 def test_tradingo_api(tradingo: Tradingo):
