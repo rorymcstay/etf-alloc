@@ -1,5 +1,5 @@
 import logging
-import copy
+import numba
 from typing import NamedTuple
 import arcticdb as adb
 
@@ -108,7 +108,6 @@ def backtest(
     **kwargs,
 ):
     trades = portfolio.ffill().fillna(0.0).diff()
-    trades.iloc[0] = portfolio.iloc[0]
     prices = prices.ffill()
 
     logger.info("running backtest for %s on stage %s with %s", name, stage, kwargs)

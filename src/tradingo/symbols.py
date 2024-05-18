@@ -1,3 +1,4 @@
+from typing import Optional
 import functools
 import logging
 from typing import NamedTuple
@@ -58,9 +59,11 @@ def symbol_provider(
     def decorator(func):
 
         @functools.wraps(func)
-        def wrapper(*args, start_date, end_date, **kwargs):
+        def wrapper(
+            *args, start_date, end_date, arctic: Optional[adb.Arctic] = None, **kwargs
+        ):
 
-            arctic = adb.Arctic(ARCTIC_URL)
+            arctic = arctic or adb.Arctic(ARCTIC_URL)
             orig_symbol_data = {}
 
             for symbol in symbols:
@@ -109,9 +112,11 @@ def symbol_publisher(
     def decorator(func):
 
         @functools.wraps(func)
-        def wrapper(*args, dry_run=False, **kwargs):
+        def wrapper(
+            *args, dry_run=False, arctic: Optional[adb.Arctic] = None, **kwargs
+        ):
 
-            arctic = adb.Arctic(ARCTIC_URL)
+            arctic = arctic or adb.Arctic(ARCTIC_URL)
             out = func(*args, arctic=arctic, **kwargs)
             logger.info("Publishing %s to %s", symbols, arctic)
 
@@ -151,10 +156,13 @@ def symbol_publisher(
                         lib, create_if_missing=True, library_options=library_options
                     ).update(sym, data, upsert=True, **params)
                 else:
-                    return out
+                    return pd.concat(
+                        out, keys=(symbols_ if template else symbols), axis=1
+                    )
 
             return None
 
+        wrapper.published_fields = symbols
         return wrapper
 
     return decorator

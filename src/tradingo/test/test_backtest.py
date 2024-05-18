@@ -1,40 +1,13 @@
 import pytest
 import pandas as pd
 
+import numpy as np
+
 from tradingo import backtest
 from tradingo.api import Tradingo
 from tradingo.backtest import PnlSnapshot
 
-
-@pytest.fixture
-def arctic() -> Tradingo:
-    return Tradingo("ETFT", "yfinance", "lmdb:///home/rory/dev/airflow/test/arctic.db")
-
-
-@pytest.fixture
-def prices(arctic: Tradingo):
-    return arctic.prices.close()
-
-
-@pytest.fixture
-def constant_returns_prices():
-
-    daily_return = 0.01
-    idx = pd.bdate_range("2020-01-01", periods=260, freq="B")
-    return pd.DataFrame(1 + daily_return, index=idx, columns=["ABCD"]).cumprod()
-
-
-@pytest.fixture
-def constant_position():
-
-    position = 1
-    idx = pd.bdate_range("2020-01-01", periods=260, freq="B")
-    return pd.DataFrame(position, index=idx, columns=["ABCD"])
-
-
-@pytest.fixture
-def portfolio(arctic: Tradingo):
-    return arctic.portfolio.trend.raw.percent()
+from tradingo.test.fixtures import position, prices, tradingo
 
 
 def test_pnl_snapshot():
@@ -67,39 +40,81 @@ def test_pnl_snapshot():
     assert pnl_2.net_investment == 200
 
 
-def test_backtest(prices: pd.DataFrame, portfolio: pd.DataFrame):
+def test_backtest_integration(benchmark, tradingo):
 
-    bt = backtest.backtest(
-        prices=prices,
-        portfolio=portfolio,
+    bt = benchmark(
+        backtest.backtest,
+        prices="close",
+        portfolio="model",
         start_date=pd.Timestamp("2018-01-01 00:00:00+00:00"),
         end_date=pd.Timestamp.now("utc"),
-        name="trend",
-        stage="RAW",
-        config_name="ETFT",
+        name="model",
+        stage="raw",
+        config_name="test",
         provider="yfinance",
         dry_run=True,
+        arctic=tradingo,
     )
 
-    assert isinstance(bt[-1], pd.DataFrame)
+    assert isinstance(bt, pd.DataFrame)
+    assert bt.columns.to_list()
 
 
-def test_backtest_constant_return(constant_returns_prices, constant_position):
+@pytest.mark.parametrize(
+    "prices,portfolio,unrealised_pnl,realised_pnl",
+    [
+        (
+            pd.DataFrame(
+                1 + 0.01,
+                index=pd.bdate_range("2020-01-01", periods=260, freq="B"),
+                columns=["ABCD"],
+            ).cumprod(),
+            pd.DataFrame(
+                1,
+                index=pd.bdate_range("2020-01-01", periods=260, freq="B"),
+                columns=["ABCD"],
+            ).cumprod(),
+            "(prices*portfolio).squeeze().diff()",
+            "pd.Series(0.0, index=prices.index)",
+        ),
+        (
+            pd.DataFrame(
+                1 + 0.01,
+                index=pd.bdate_range("2020-01-01", periods=260, freq="B"),
+                columns=["ABCD"],
+            ).cumprod(),
+            pd.DataFrame(
+                range(0, 260),
+                index=pd.bdate_range("2020-01-01", periods=260, freq="B"),
+                columns=["ABCD"],
+            ),
+            "(prices*portfolio.shift()).squeeze().diff()",
+            "pd.Series(0.0, index=prices.index)",
+        ),
+    ],
+)
+def test_backtest(prices, portfolio, unrealised_pnl, realised_pnl):
 
-    portfolio, *fields = backtest.backtest(
-        portfolio=constant_position,
-        prices=constant_returns_prices,
+    bt = backtest.backtest(
+        portfolio=portfolio,
+        prices=prices,
         name="test",
         config_name="test",
         dry_run=True,
-        start_date=constant_returns_prices.index[0],
-        end_date=constant_returns_prices.index[-1],
+        start_date=portfolio.index[0],
+        end_date=portfolio.index[-1],
         stage="raw",
     )
 
     pd.testing.assert_series_equal(
-        portfolio["unrealised_pnl"].diff() / 2,
-        (constant_position * constant_returns_prices.diff()).squeeze(),
+        bt["backtest/instrument.unrealised_pnl"].squeeze().diff(),
+        (eval(unrealised_pnl) if isinstance(unrealised_pnl, str) else unrealised_pnl),
+        check_names=False,
+        check_freq=False,
+    )
+    pd.testing.assert_series_equal(
+        bt["backtest/instrument.realised_pnl"].squeeze().diff().fillna(0.0),
+        (eval(realised_pnl) if isinstance(realised_pnl, str) else realised_pnl),
         check_names=False,
         check_freq=False,
     )
