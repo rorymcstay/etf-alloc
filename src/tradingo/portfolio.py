@@ -35,6 +35,7 @@ def portfolio_construction(
     close: pd.DataFrame,
     ivol: pd.DataFrame,
     vol: pd.DataFrame,
+    config: dict,
     **kwargs,
 ):
 
@@ -42,7 +43,6 @@ def portfolio_construction(
 
     symbols = [*ivol.iloc[0:50].index, *ivol.iloc[-50:].index]
 
-    config = utils.get_config()
     strategy = config["portfolio"][name]
     signal_weights = strategy["signal_weights"]
     instruments = utils.get_instruments(config)
@@ -92,6 +92,10 @@ def portfolio_construction(
         positions[(positions < 0.0)] = 0.0
 
     pct_position = positions.div(positions.transpose().sum(), axis=0)
+    for col in pct_position.columns:
+        pct_position.loc[
+            pct_position.index == pct_position.first_valid_index(), col
+        ] = 0.0
 
     share_position = (pct_position * config["aum"]) / close
 
@@ -116,4 +120,4 @@ def instrument_ivol(close, provider, **kwargs):
         ivol = vol(pd.concat((universe, pct_returns[symbol]), axis=1)) - vol(universe)
         ivols.append(ivol.rename(symbol))
 
-    return (pd.concat(ivols, axis=1),)
+    return (pd.concat(ivols, axis=1).rename_axis("Symbol"),)

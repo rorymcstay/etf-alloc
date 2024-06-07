@@ -1,23 +1,6 @@
 {
-  "name": "etft",
+  "name": "ETFT",
   "provider": "yfinance",
-  "instruments": {
-    "sp500": {
-      "html": "https://gist.github.com/ZeccaLehn/f6a2613b24c393821f81c0c1d23d4192#file-sp500-csv",
-      "index_col": "Symbol"
-    },
-    "etfs": {
-      "file": "/home/rory/dev/airflow/trading/universe.csv",
-      "index_col": "Ticker"
-    }
-  },
-  "futures": [
-    "VX"
-  ],
-  "options": [
-    "VIX",
-    "ES"
-  ],
   "aum": 70000,
   "signal_configs": {
     "ewmac_64_32": {
@@ -82,16 +65,8 @@
     }
   },
   "portfolio": {
-    "null": {
-      "instruments": "sp500",
-      "signal_weights": [],
-      "instrument_weights": {},
-      "multiplier": 0,
-      "default_weight": 1,
-      "buffer_width": 0
-    },
     "trend": {
-      "instruments": "etfs",
+      "vol": "vol.etfs",
       "signal_weights": {
         "ewmac_128_64.scaled.capped": 1,
         "ewmac_64_32.scaled.capped": 1

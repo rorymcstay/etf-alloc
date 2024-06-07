@@ -5,7 +5,8 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import dtale
-from openbb import obb
+
+# from openbb import obb
 from sklearn.decomposition import PCA
 from tradingo import backtest
 from tradingo.utils import get_instruments, get_config, with_instrument_details

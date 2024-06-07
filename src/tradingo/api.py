@@ -1,8 +1,17 @@
+from __future__ import annotations
+from copy import deepcopy
+import inspect
+from typing import Optional
 import contextlib
 import pandas as pd
 from datetime import datetime
 import re
 import arcticdb as adb
+
+import tradingo.utils
+
+
+READ_SIG = inspect.signature(adb.arctic.Library.read)
 
 
 class _Read:
@@ -14,6 +23,7 @@ class _Read:
         assets,
         common_args,
         common_kwargs,
+        root: Tradingo,
     ):
         self.path_so_far = path_so_far
         self.library = library
@@ -21,6 +31,7 @@ class _Read:
         self.path = ".".join(self.path_so_far)
         self.common_args = common_args
         self.common_kwargs = common_kwargs
+        self.root = root
 
     def __dir__(self):
         return [*self.list(), *super().__dir__()]
@@ -35,20 +46,90 @@ class _Read:
             assets=self.assets,
             common_args=self.common_args,
             common_kwargs=self.common_kwargs,
+            root=self.root,
         )
 
-    def __call__(self, *args, **kwargs):
-        kwargs.setdefault(
-            "columns",
+    def __call__(self, *args, **kwargs) -> pd.DataFrame:
+        operations = ["merge", "transpose", "concat", "with_instrument_details"]
+        operation, index = next(
             (
-                self.assets
-                if all(i in self.path_so_far for i in ("backtest", "portfolio"))
-                else []
+                (elem, i)
+                for i, elem in enumerate(self.path_so_far)
+                if elem in operations
             ),
+            (None, len(self.path_so_far)),
         )
-        return self.library.read(
-            self.path, *args, *self.common_args, **kwargs, **self.common_kwargs
-        ).data
+        part_one_path = self.path_so_far[0:index]
+        part_two_path = self.path_so_far[index + 1 :]
+
+        lib_kwargs = {
+            k: v for k, v in kwargs.items() if k in READ_SIG.parameters.keys()
+        }
+
+        callback_kwargs = {}
+
+        def get_callback(operation):
+
+            for i in (pd.DataFrame, tradingo.utils, pd):
+                try:
+                    return getattr(i, operation)
+                except AttributeError as ex:
+                    continue
+            raise AttributeError(operation)
+
+        if operation:
+            callback = get_callback(operation)
+            callback_sig = inspect.signature(callback)
+            callback_kwargs = {
+                k: v for k, v in kwargs.items() if k in callback_sig.parameters.keys()
+            }
+
+        def get_data_at_path(path, kw):
+
+            kw.setdefault(
+                "columns",
+                (
+                    self.assets
+                    if all(i in path for i in ("backtest", "portfolio"))
+                    else []
+                ),
+            )
+
+            for k in self.common_kwargs:
+                kw.pop(k, None)
+            return self.library.read(
+                ".".join(path),
+                *args,
+                *self.common_args,
+                **kw,
+                **self.common_kwargs,
+            ).data
+
+        lhs = get_data_at_path(part_one_path, lib_kwargs)
+
+        if operation:
+            callback_args = (lhs,)
+            if part_two_path:
+                callback_lib = part_two_path[0]
+                callback_args = (
+                    lhs,
+                    self.__class__(
+                        (*self.root._get_path_so_far(callback_lib), *part_two_path[1:]),
+                        getattr(self.root, (callback_lib)).library,
+                        self.assets,
+                        self.common_args,
+                        self.common_kwargs,
+                        self.root,
+                    )(*args, **kwargs),
+                )
+
+            if operation == "concat":
+                callback_args = (callback_args,)
+
+            callback = get_callback(operation)
+            callback_sig = inspect.signature(pd.DataFrame)
+            return callback(*callback_args, **callback_kwargs)
+        return lhs
 
     def update(self, *args, **kwargs):
         self.library.update(self.path, *args, **kwargs)
@@ -77,10 +158,11 @@ class _Read:
 
 class Tradingo(adb.Arctic):
 
-    def __init__(self, name, provider, *args, **kwargs):
+    def __init__(self, name, provider, *args, instrument_symbol="etfs", **kwargs):
         super().__init__(*args, **kwargs)
         self.name = name
         self.provider = provider
+        self.instrument_symbol = instrument_symbol
         self._context_args = ()
         self._context_kwargs = {}
 
@@ -94,12 +176,16 @@ class Tradingo(adb.Arctic):
             self._context_args = ()
             self._context_kwargs = {}
 
+    def _get_path_so_far(self, library):
+        path_so_far = [self.name]
+        if library == "prices":
+            path_so_far.append(self.provider)
+        return path_so_far
+
     def __getattr__(self, library):
 
         if library in self.list_libraries():
-            path_so_far = [self.name]
-            if library == "prices":
-                path_so_far.append(self.provider)
+            path_so_far = self._get_path_so_far(library)
             if library == "instruments":
                 return _Read(
                     library=self.get_library(library),
@@ -107,13 +193,17 @@ class Tradingo(adb.Arctic):
                     assets=[],
                     common_args=(),
                     common_kwargs={},
+                    root=self,
                 )
             return _Read(
                 library=self.get_library(library),
                 path_so_far=path_so_far,
-                assets=self.instruments.etfs().index.to_list(),
+                assets=getattr(
+                    self.instruments, self.instrument_symbol
+                )().index.to_list(),
                 common_args=self._context_args,
                 common_kwargs=self._context_kwargs,
+                root=self,
             )
 
         return super().__getattr__(library)
@@ -136,7 +226,7 @@ class VolSurface(Tradingo):
 
             futures = (
                 pd.concat(
-                    (self.futures.cboe.VX.expiration(), t.futures.cboe.VX.price()),
+                    (self.futures.cboe.VX.expiration(), self.futures.cboe.VX.price()),
                     axis=1,
                     keys=("expiration", "price"),
                 )
@@ -177,4 +267,6 @@ class VolSurface(Tradingo):
                 ),
             ).stack(future_stack=True)
 
-        return option_chains.merge(futures, on=["timestamp", "expiration"], how="left")
+        return option_chains.merge(
+            futures, on=["timestamp", "expiration"], how="left"
+        ).set_index(["expiration", "option_type", "strike"], append=True)

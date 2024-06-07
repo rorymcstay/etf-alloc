@@ -1,5 +1,7 @@
 import logging
+import numba
 import numpy as np
+import math
 
 import pandas as pd
 
@@ -62,3 +64,43 @@ def scaled(signal, scale: float, **kwargs):
 def capped(signal: pd.Series, cap: float, **kwargs):
     signal[signal.abs() >= cap] = np.sign(signal) * cap
     return (signal,)
+
+
+@numba.jit
+def _linear_buffer(signal: np.ndarray, thresholds: np.ndarray):
+
+    res: np.ndarray = np.copy(signal)
+    lower = signal - thresholds
+    upper = signal + thresholds
+    res[0, :] = signal[0, :]
+
+    for i in range(1, res.shape[0]):
+        for j in range(signal.shape[1]):
+            trade_in = math.isnan(res[i - 1, j]) and not math.isnan(signal[i, j])
+            if trade_in:
+                res[i, j] = signal[i, j]
+            elif res[i - 1, j] < lower[i, j]:
+                res[i, j] = lower[i, j]
+            elif res[i - 1, j] > upper[i, j]:
+                res[i, j] = upper[i, j]
+            else:
+                res[i, j] = res[i - 1, j]
+    if signal.ndim == 1:
+        return np.squeeze(res)
+    return res
+
+
+@symbol_publisher(
+    "{library}/{signal}.buffered", symbol_prefix="{config_name}.{model_name}."
+)
+@symbol_provider(
+    signal="{library}/{signal}",
+    symbol_prefix="{config_name}.{model_name}.",
+)
+def buffered(signal: pd.Series | pd.DataFrame, buffer_width, **kwargs):
+
+    thresholds = signal.mul(buffer_width)
+
+    buffered = _linear_buffer(signal.to_numpy(), thresholds.to_numpy())
+
+    return (pd.DataFrame(buffered, index=signal.index, columns=signal.columns),)

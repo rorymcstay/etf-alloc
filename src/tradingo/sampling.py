@@ -1,5 +1,5 @@
-from tradingo.symbols import symbol_publisher
-from typing import Literal
+from tradingo.symbols import symbol_provider, symbol_publisher
+from typing import Literal, Optional
 from arcticdb import LibraryOptions
 
 import pandas as pd
@@ -54,6 +54,28 @@ Provider = Literal[
 ]
 
 
+@symbol_publisher("instruments/{universe}")
+def download_instruments(
+    index_col: str,
+    *,
+    html: Optional[str] = None,
+    file: Optional[str] = None,
+    **kwargs,
+):
+
+    if file:
+        return (
+            pd.read_csv(
+                file,
+                index_col=index_col,
+            ).rename_axis("Symbol"),
+        )
+    if html:
+        return (pd.read_html(html)[0].set_index(index_col).rename_axis("Symbol"),)
+    raise ValueError(file)
+
+
+@symbol_provider(universe="instruments/{name}", no_date=True)
 @symbol_publisher(
     "prics/open",
     "prices/high",
@@ -61,15 +83,15 @@ Provider = Literal[
     "prices/close",
     "prices/adj_close",
     "prices/volume",
-    symbol_prefix="{config_name}.{provider}.",
+    symbol_prefix="{config_name}.{provider}.{instruments}.",
 )
 def sample_equity(
-    universe: list[str], start_date: str, end_date: str, provider: Provider, **kwargs
+    universe: pd.DataFrame, start_date: str, end_date: str, provider: Provider, **kwargs
 ):
     from openbb import obb
 
     data = obb.equity.price.historical(  # type: ignore
-        universe, start_date=start_date, end_date=end_date, provider=provider
+        universe.index, start_date=start_date, end_date=end_date, provider=provider
     ).to_dataframe()
 
     data.index = pd.to_datetime(data.index)

@@ -53,6 +53,7 @@ def parse_symbol(symbol, kwargs, symbol_prefix="", symbol_postfix=""):
 
 def symbol_provider(
     symbol_prefix="{config_name}.",
+    no_date=False,
     **symbols,
 ):
 
@@ -82,7 +83,11 @@ def symbol_provider(
                     )
                     .read(
                         parse_symbol(v, kwargs, symbol_prefix=symbol_prefix).symbol,
-                        date_range=(pd.Timestamp(start_date), pd.Timestamp(end_date)),
+                        date_range=(
+                            None
+                            if no_date
+                            else (pd.Timestamp(start_date), pd.Timestamp(end_date))
+                        ),
                         **parse_symbol(v, kwargs, symbol_prefix=symbol_prefix).kwargs,
                     )
                     .data
@@ -93,7 +98,7 @@ def symbol_provider(
             kwargs.update(symbols_data)
             kwargs.update(orig_symbol_data)
 
-            return func(*args, **kwargs)
+            return func(*args, **kwargs, start_date=start_date, end_date=end_date)
 
         return wrapper
 
@@ -120,7 +125,7 @@ def symbol_publisher(
             out = func(*args, arctic=arctic, **kwargs)
             logger.info("Publishing %s to %s", symbols, arctic)
 
-            # if kws:
+            # yf kws:
             #    kwdout = out.pop(-1)
             #
             if template:
@@ -152,13 +157,16 @@ def symbol_publisher(
                 )
 
                 if not dry_run:
-                    arctic.get_library(
+                    lib = arctic.get_library(
                         lib, create_if_missing=True, library_options=library_options
-                    ).update(sym, data, upsert=True, **params)
-                else:
-                    return pd.concat(
-                        out, keys=(symbols_ if template else symbols), axis=1
                     )
+                    if isinstance(data.index, pd.DatetimeIndex):
+                        lib.update(sym, data, upsert=True, **params)
+                    else:
+                        lib.write(sym, data, **params)
+
+            if dry_run:
+                return pd.concat(out, keys=symbols_, axis=1)
 
             return None
 

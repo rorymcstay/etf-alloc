@@ -7,31 +7,35 @@ import pandas as pd
 HOME_DIR = pathlib.Path("/home/rory/dev/airflow/") / "trading"
 
 
-def get_config():
-    return json.loads((HOME_DIR / "config.json").read_text())
+def get_config(config_path):
+    return json.loads(
+        (pathlib.Path(config_path) or (HOME_DIR / "config.json")).read_text()
+    )
 
 
 def get_instruments(config, key="equity") -> pd.DataFrame:
-    return pd.read_csv(
-        config[key]["file"],
-        index_col=config[key]["index_col"],
-        parse_dates=["Incept. Date"],
-        date_format="%b %d, %Y",
-    ).rename_axis("Symbol")
+    if "file" in config[key]:
+        return pd.read_csv(
+            config[key]["file"],
+            index_col=config[key]["index_col"],
+        ).rename_axis("Symbol")
+    if "html" in config[key]:
+        return pd.read_html(config[key]["html"], index_col=config[key]["index_col"])[0]
+    raise ValueError(config[key])
 
 
 def with_instrument_details(
     dataframe: pd.DataFrame,
     instruments: pd.DataFrame,
-    columns: list[str],
+    fields: list[str],
 ):
     """Add instrument details to column index"""
     return (
         dataframe.transpose()
         .rename_axis("Symbol")
-        .merge(instruments[columns], left_index=True, right_index=True)
+        .merge(instruments[fields], left_index=True, right_index=True)
         .reset_index()
-        .set_index([*columns, "Symbol"])
+        .set_index([*fields, "Symbol"])
         .sort_index()
         .transpose()
     ).dropna()

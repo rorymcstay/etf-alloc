@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 import numba
 from typing import NamedTuple
 import arcticdb as adb
@@ -91,13 +92,13 @@ BACKTEST_FIELDS = [i for i in PnlSnapshot._fields if i != "date"]
 
 
 @symbol_provider(
-    portfolio="portfolio/{name}.{stage}.shares",
+    portfolio="portfolio/{name}.{stage}",
     prices="prices/{provider}.close",
 )
 @symbol_publisher(
     "backtest/portfolio",
     *(f"backtest/instrument.{f}" for f in BACKTEST_FIELDS if f != "date"),
-    symbol_prefix="{config_name}.{name}.",
+    symbol_prefix="{config_name}.{name}.{stage}.",
 )
 def backtest(
     *,
@@ -179,7 +180,7 @@ def backtest(
 
 
 @lib_provider(backtests="backtest")
-def get_instrument_backtest(*symbol, backtests=None):
+def get_instrument_backtest(*symbol, backtests: Optional[adb.library.Library] = None):
     return pd.concat(
         (
             i.data

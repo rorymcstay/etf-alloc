@@ -18,6 +18,7 @@ from tradingo import signals
 from tradingo.backtest import backtest
 from tradingo.portfolio import instrument_ivol, portfolio_construction
 from tradingo import sampling
+from tradingo.utils import get_config, get_instruments
 
 logger = logging.getLogger(__name__)
 
@@ -29,23 +30,10 @@ AUM = 70_000
 ARCTIC = adb.Arctic(ARCTIC_URL)
 
 
-def get_config(config_path):
-    return json.loads(
-        (pathlib.Path(config_path) or (HOME_DIR / "config.json")).read_text()
-    )
-
-
-def get_instruments(config, key="equity") -> pd.DataFrame:
-    return pd.read_csv(
-        config[key]["file"],
-        index_col=config[key]["index_col"],
-    ).rename_axis("Symbol")
-
-
 def make_task_id(task, symbol=None) -> str:
     if symbol:
         symbol = re.sub(r"\^|/", ".", str(symbol).strip())
-        return f"{task}_{symbol}"
+        return f"{task}.{symbol}"
     return task
 
 
@@ -79,7 +67,6 @@ def calculate_trades(
 def get_or_create_signal(
     name, signal, function, config, depends_on, dag: DAG, prices
 ) -> Operator:
-    print("getting ", name)
     signal = signal.copy()
     task_id = make_task_id("signal", name)
     try:
@@ -124,6 +111,52 @@ DAG_DEFAULT_ARGS = {
 }
 
 
+def get_or_create_universe(universe, dag, **kwargs):
+    insts = _get_or_create_task(
+        task_id=universe,
+        callable=sampling.download_instruments,
+        dag=dag,
+        universe=universe,
+        **kwargs,
+    )
+    prices = _get_or_create_task(
+        task_id=f"{universe}.sample",
+        callable=sampling.sample_equity,
+        dag=dag,
+        universe=universe,
+        start_date=START_DATE,
+        end_date="{{ data_interval_end }}",
+        provider=PROVIDER,
+        name=universe,
+        **kwargs,
+    )
+
+    ivol = _get_or_create_task(
+        task_id=f"{universe}.ivol",
+        callable=instrument_ivol,
+        dag=dag,
+        start_date=START_DATE,
+        end_date="{{ data_interval_end }}",
+        provider=PROVIDER,
+        **kwargs,
+    )
+
+    _ = insts >> prices >> ivol
+    return insts
+
+
+def _get_or_create_task(task_id, callable, dag, *args, **kwargs):
+    try:
+        return PythonOperator(
+            task_id=task_id,
+            python_callable=callable,
+            op_args=args,
+            op_kwargs=kwargs,
+        )
+    except DuplicateTaskIdFound:
+        return dag.get_task(task_id)
+
+
 def trading_dag(
     dag_id,
     config_path=str(HOME_DIR / "config.json"),
@@ -139,18 +172,6 @@ def trading_dag(
         default_args=DAG_DEFAULT_ARGS,
     ) as dag:
         config = get_config(config_path)
-
-        prices = PythonOperator(
-            task_id=make_task_id("sample_equity"),
-            python_callable=sampling.sample_equity,
-            op_kwargs={
-                "universe": get_instruments(config, "equity").index,
-                "start_date": START_DATE,
-                "end_date": "{{ data_interval_end }}",
-                "provider": PROVIDER,
-                "config_name": config["name"],
-            },
-        )
 
         if "futures" in config:
 
@@ -179,22 +200,17 @@ def trading_dag(
                     config_name=config["name"],
                 ),
             )
-        ivol = PythonOperator(
-            task_id=make_task_id("ivol"),
-            python_callable=instrument_ivol,
-            op_kwargs={
-                "start_date": START_DATE,
-                "end_date": "{{ data_interval_end }}",
-                "provider": PROVIDER,
-                "config_name": config["name"],
-            },
-        )
-
-        _ = prices >> ivol
 
         for name, strategy in config["portfolio"].items():
+            prices = get_or_create_universe(
+                universe=strategy["instruments"],
+                config_name=config["name"],
+                dag=dag,
+                **config["instruments"][strategy["instruments"]],
+            )
+
             pos = PythonOperator(
-                task_id=make_task_id("portfolio_construction", name),
+                task_id=make_task_id("portfolio.raw.shares", name),
                 python_callable=portfolio_construction,
                 op_kwargs={
                     "start_date": START_DATE,
@@ -204,6 +220,22 @@ def trading_dag(
                     "provider": PROVIDER,
                 },
             )
+            buffered_pos = PythonOperator(
+                task_id=make_task_id("portfolio.raw.shares.buffered", name),
+                python_callable=signals.buffered,
+                op_kwargs={
+                    "start_date": START_DATE,
+                    "end_date": "{{ data_interval_end }}",
+                    "name": name,
+                    "config_name": config["name"],
+                    "provider": PROVIDER,
+                    "signal": "raw.shares",
+                    "library": "portfolio",
+                    "model_name": name,
+                    "buffer_width": strategy["buffer_width"],
+                },
+            )
+            _ = pos >> buffered_pos
             _ = pos >> PythonOperator(
                 task_id=make_task_id("backtest", name),
                 python_callable=backtest,
@@ -211,7 +243,19 @@ def trading_dag(
                     "start_date": START_DATE,
                     "end_date": "{{ data_interval_end }}",
                     "name": name,
-                    "stage": "raw",
+                    "stage": "raw.shares",
+                    "config_name": config["name"],
+                    "provider": PROVIDER,
+                },
+            )
+            _ = buffered_pos >> PythonOperator(
+                task_id=make_task_id("backtest", f"{name}.buffered"),
+                python_callable=backtest,
+                op_kwargs={
+                    "start_date": START_DATE,
+                    "end_date": "{{ data_interval_end }}",
+                    "name": name,
+                    "stage": "raw.shares.buffered",
                     "config_name": config["name"],
                     "provider": PROVIDER,
                 },
@@ -249,4 +293,4 @@ def trading_dag(
     return dag
 
 
-etft = trading_dag(dag_id="ETFT", start_date=pd.Timestamp("2024-05-09 00:00:00+00:00"))
+trading_dag("etft", start_date=pd.Timestamp("2024-06-06 00:00:00+00:00"))
