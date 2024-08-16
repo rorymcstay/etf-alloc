@@ -65,7 +65,7 @@ def calculate_trades(
 
 
 def get_or_create_signal(
-    name, signal, function, config, depends_on, dag: DAG, prices
+    name, universe, provider, signal, function, config, depends_on, dag: DAG, prices
 ) -> Operator:
     signal = signal.copy()
     task_id = make_task_id("signal", name)
@@ -79,7 +79,8 @@ def get_or_create_signal(
                 "end_date": "{{ data_interval_end }}",
                 "signal_name": name,
                 "config_name": dag.dag_id,
-                "provider": PROVIDER,
+                "provider": provider,
+                "universe": universe,
                 **signal,
             },
         )
@@ -93,6 +94,8 @@ def get_or_create_signal(
         _ = (
             get_or_create_signal(
                 sig,
+                signal_config["universe"],
+                signal_config["provider"],
                 signal_config["kwargs"],
                 signal_config["function"],
                 config,
@@ -111,7 +114,7 @@ DAG_DEFAULT_ARGS = {
 }
 
 
-def get_or_create_universe(universe, dag, **kwargs):
+def get_or_create_universe(universe, provider, dag, **kwargs):
     insts = _get_or_create_task(
         task_id=universe,
         callable=sampling.download_instruments,
@@ -126,8 +129,9 @@ def get_or_create_universe(universe, dag, **kwargs):
         universe=universe,
         start_date=START_DATE,
         end_date="{{ data_interval_end }}",
-        provider=PROVIDER,
+        provider=provider,
         name=universe,
+        instruments=universe,
         **kwargs,
     )
 
@@ -137,7 +141,8 @@ def get_or_create_universe(universe, dag, **kwargs):
         dag=dag,
         start_date=START_DATE,
         end_date="{{ data_interval_end }}",
-        provider=PROVIDER,
+        provider=provider,
+        universe=universe,
         **kwargs,
     )
 
@@ -203,11 +208,14 @@ def trading_dag(
 
         for name, strategy in config["portfolio"].items():
             prices = get_or_create_universe(
-                universe=strategy["instruments"],
+                universe=strategy["universe"],
                 config_name=config["name"],
                 dag=dag,
-                **config["instruments"][strategy["instruments"]],
+                **config["universe"][strategy["universe"]],
             )
+
+            if not strategy["signal_weights"]:
+                continue
 
             pos = PythonOperator(
                 task_id=make_task_id("portfolio.raw.shares", name),
@@ -217,7 +225,8 @@ def trading_dag(
                     "end_date": "{{ data_interval_end }}",
                     "name": name,
                     "config_name": config["name"],
-                    "provider": PROVIDER,
+                    "provider": strategy["provider"],
+                    "universe": strategy["universe"],
                 },
             )
             buffered_pos = PythonOperator(
@@ -228,7 +237,7 @@ def trading_dag(
                     "end_date": "{{ data_interval_end }}",
                     "name": name,
                     "config_name": config["name"],
-                    "provider": PROVIDER,
+                    "provider": strategy["provider"],
                     "signal": "raw.shares",
                     "library": "portfolio",
                     "model_name": name,
@@ -245,7 +254,7 @@ def trading_dag(
                     "name": name,
                     "stage": "raw.shares",
                     "config_name": config["name"],
-                    "provider": PROVIDER,
+                    "provider": strategy["provider"],
                 },
             )
             _ = buffered_pos >> PythonOperator(
@@ -257,7 +266,7 @@ def trading_dag(
                     "name": name,
                     "stage": "raw.shares.buffered",
                     "config_name": config["name"],
-                    "provider": PROVIDER,
+                    "provider": strategy["provider"],
                 },
             )
             # _ = pos >> PythonOperator(
@@ -280,12 +289,14 @@ def trading_dag(
                     prices
                     >> get_or_create_signal(
                         signal,
+                        signal_config["universe"],
+                        signal_config["provider"],
                         signal_config["kwargs"],
-                        signal_config["function"],
-                        config,
-                        signal_config.get("depends_on", []),
-                        dag,
-                        prices,
+                        function=signal_config["function"],
+                        config=config,
+                        depends_on=signal_config.get("depends_on", []),
+                        dag=dag,
+                        prices=prices,
                     )
                     >> pos
                 )

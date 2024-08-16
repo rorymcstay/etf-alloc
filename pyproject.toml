@@ -17,7 +17,11 @@ dependencies = [
   "pytest",
   "PyYAML",
   "yfinance",
+  "cython",
 ]
+
+[build-system]
+requires = ["cython", "numpy", "setuptools"]
 
 [tool.black]
 line-length = 88

@@ -9,7 +9,8 @@
       "kwargs": {
         "speed1": 64,
         "speed2": 32,
-        "model_name": "trend"
+        "model_name": "trend",
+        "universe": "etfs"
       }
     },
     "ewmac_64_32.scaled": {
@@ -19,7 +20,8 @@
       "function": "scaled",
       "kwargs": {
         "scale": 20,
-        "signal": "ewmac_64_32"
+        "signal": "ewmac_64_32",
+        "universe": "etfs"
       }
     },
     "ewmac_64_32.scaled.capped": {
@@ -29,7 +31,8 @@
       "function": "capped",
       "kwargs": {
         "cap": 15,
-        "signal": "ewmac_64_32.scaled"
+        "signal": "ewmac_64_32.scaled",
+        "universe": "etfs"
       }
     },
     "ewmac_128_64": {
@@ -38,7 +41,8 @@
       "kwargs": {
         "speed1": 128,
         "speed2": 64,
-        "model_name": "trend"
+        "model_name": "trend",
+        "universe": "etfs"
       }
     },
     "ewmac_128_64.scaled": {
@@ -49,7 +53,8 @@
       "kwargs": {
         "scale": 1,
         "signal": "ewmac_128_64",
-        "model_name": "trend"
+        "model_name": "trend",
+        "universe": "etfs"
       }
     },
     "ewmac_128_64.scaled.capped": {
@@ -60,7 +65,8 @@
       "kwargs": {
         "cap": 0.75,
         "signal": "ewmac_128_64.scaled",
-        "model_name": "trend"
+        "model_name": "trend",
+        "universe": "etfs"
       }
     }
   },

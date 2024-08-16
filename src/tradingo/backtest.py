@@ -1,6 +1,5 @@
 import logging
 from typing import Optional
-import numba
 from typing import NamedTuple
 import arcticdb as adb
 
@@ -8,6 +7,7 @@ import pandas as pd
 import numpy as np
 
 from tradingo.symbols import lib_provider, symbol_provider, symbol_publisher
+from tradingo import _backtest
 
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,14 @@ class PnlSnapshot(NamedTuple):
         )
 
 
-BACKTEST_FIELDS = [i for i in PnlSnapshot._fields if i != "date"]
+BACKTEST_FIELDS = (
+    "unrealised_pnl",
+    "realised_pnl",
+    "total_pnl",
+    "net_investment",
+    "net_position",
+    "avg_open_price",
+)
 
 
 @symbol_provider(
@@ -121,37 +128,15 @@ def backtest(
         opening_position = portfolio.loc[portfolio.first_valid_index(), ticker]
         opening_avg_price = prices.loc[portfolio.first_valid_index(), ticker]
 
-        current_pnl = PnlSnapshot(
-            date=inst_trades.first_valid_index() - pd.offsets.BDay(1),
-            net_position=opening_position,
-            avg_open_price=opening_avg_price,
-        )
-
-        pnl_series = []
-
-        data = pd.concat(
-            (inst_trades.rename("trade"), inst_prices.rename("price")), axis=1
-        )
-
-        for date, (trade, last_price) in data.iterrows():
-            current_pnl = current_pnl.on_market_data(last_price=last_price, date=date)
-            if not np.isnan(trade) and trade:
-                current_pnl = current_pnl.on_trade(
-                    last_price, trade_quantity=trade, trade_date=date
-                )
-
-            pnl_series.append(current_pnl)
-
-        return (
-            pd.DataFrame(pnl_series)
-            .set_index(["date"])
-            .astype(
-                {
-                    k: v
-                    for k, v in PnlSnapshot.__annotations__.items()
-                    if "date" not in k
-                }
-            )
+        return pd.DataFrame(
+            data=_backtest.compute_backtest(
+                opening_position,
+                opening_avg_price,
+                inst_trades.fillna(0.0).to_numpy(),
+                inst_prices.to_numpy(),
+            ),
+            index=inst_trades.index,
+            columns=BACKTEST_FIELDS,
         )
 
     backtest = pd.concat(

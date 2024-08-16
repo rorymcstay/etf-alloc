@@ -75,7 +75,7 @@ def download_instruments(
     raise ValueError(file)
 
 
-@symbol_provider(universe="instruments/{name}", no_date=True)
+@symbol_provider(instruments="instruments/{name}", no_date=True)
 @symbol_publisher(
     "prics/open",
     "prices/high",
@@ -83,15 +83,19 @@ def download_instruments(
     "prices/close",
     "prices/adj_close",
     "prices/volume",
-    symbol_prefix="{config_name}.{provider}.{instruments}.",
+    symbol_prefix="{provider}.{universe}.",
 )
 def sample_equity(
-    universe: pd.DataFrame, start_date: str, end_date: str, provider: Provider, **kwargs
+    instruments: pd.DataFrame,
+    start_date: str,
+    end_date: str,
+    provider: Provider,
+    **kwargs,
 ):
     from openbb import obb
 
     data = obb.equity.price.historical(  # type: ignore
-        universe.index, start_date=start_date, end_date=end_date, provider=provider
+        instruments.index, start_date=start_date, end_date=end_date, provider=provider
     ).to_dataframe()
 
     data.index = pd.to_datetime(data.index)
@@ -111,7 +115,7 @@ def sample_equity(
 
 @symbol_publisher(
     template="options/{0}.{1}",
-    symbol_prefix="{config_name}.{provider}.",
+    symbol_prefix="{provider}.",
     library_options=LibraryOptions(dynamic_schema=True, dedup=True),
 )
 def sample_options(
@@ -144,7 +148,7 @@ def sample_options(
 
 @symbol_publisher(
     template="futures/{0}.{1}",
-    symbol_prefix="{config_name}.{provider}.",
+    symbol_prefix="{provider}.",
     library_options=LibraryOptions(dynamic_schema=True, dedup=True),
 )
 def sample_futures(

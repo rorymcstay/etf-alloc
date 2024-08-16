@@ -19,15 +19,16 @@ DEFAULT_AUM = 100_000
 
 @lib_provider(model_signals="signals")
 @symbol_provider(
-    close="prices/{provider}.close",
-    ivol="prices/{provider}.ivol",
-    vol="signals/{name}.vol_128",
+    close="prices/close",
+    ivol="prices/ivol",
+    vol="signals/vol_128",
+    symbol_prefix="{provider}.{universe}.",
 )
 @symbol_publisher(
     "portfolio/raw.percent",
     "portfolio/raw.shares",
     "signals/raw.signal",
-    symbol_prefix="{config_name}.{name}.",
+    symbol_prefix="{provider}.{universe}.{name}.",
 )
 def portfolio_construction(
     name: str,
@@ -102,8 +103,8 @@ def portfolio_construction(
     return (pct_position, share_position, signal_value)
 
 
-@symbol_provider(close="prices/{provider}.adj_close")
-@symbol_publisher("prices/{provider}.ivol")
+@symbol_provider(close="prices/adj_close", symbol_prefix="{provider}.{universe}.")
+@symbol_publisher("prices/ivol", symbol_prefix="{provider}.{universe}.")
 def instrument_ivol(close, provider, **kwargs):
     pct_returns = np.log(close / close.shift())
 
