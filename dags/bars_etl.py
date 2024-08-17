@@ -1,6 +1,5 @@
 import logging
 import os
-import json
 import pathlib
 import re
 from datetime import datetime
@@ -13,12 +12,12 @@ from airflow.models import Operator
 import arcticdb as adb
 import pandas as pd
 
-from tradingo.symbols import ARCTIC_URL, symbol_provider, symbol_publisher, lib_provider
+from tradingo.symbols import ARCTIC_URL, symbol_provider, symbol_publisher
 from tradingo import signals
 from tradingo.backtest import backtest
 from tradingo.portfolio import instrument_ivol, portfolio_construction
 from tradingo import sampling
-from tradingo.utils import get_config, get_instruments
+from tradingo.utils import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +226,7 @@ def trading_dag(
                     "config_name": config["name"],
                     "provider": strategy["provider"],
                     "universe": strategy["universe"],
+                    "config": config,
                 },
             )
             buffered_pos = PythonOperator(
@@ -242,6 +242,7 @@ def trading_dag(
                     "library": "portfolio",
                     "model_name": name,
                     "buffer_width": strategy["buffer_width"],
+                    "universe": strategy["universe"],
                 },
             )
             _ = pos >> buffered_pos
@@ -255,6 +256,7 @@ def trading_dag(
                     "stage": "raw.shares",
                     "config_name": config["name"],
                     "provider": strategy["provider"],
+                    "universe": strategy["universe"],
                 },
             )
             _ = buffered_pos >> PythonOperator(
@@ -267,6 +269,7 @@ def trading_dag(
                     "stage": "raw.shares.buffered",
                     "config_name": config["name"],
                     "provider": strategy["provider"],
+                    "universe": strategy["universe"],
                 },
             )
             # _ = pos >> PythonOperator(

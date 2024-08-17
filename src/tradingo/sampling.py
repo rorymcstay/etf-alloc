@@ -77,7 +77,7 @@ def download_instruments(
 
 @symbol_provider(instruments="instruments/{name}", no_date=True)
 @symbol_publisher(
-    "prics/open",
+    "prices/open",
     "prices/high",
     "prices/low",
     "prices/close",
@@ -95,7 +95,10 @@ def sample_equity(
     from openbb import obb
 
     data = obb.equity.price.historical(  # type: ignore
-        instruments.index, start_date=start_date, end_date=end_date, provider=provider
+        instruments.index.to_list(),
+        start_date=start_date,
+        end_date=end_date,
+        provider=provider,
     ).to_dataframe()
 
     data.index = pd.to_datetime(data.index)

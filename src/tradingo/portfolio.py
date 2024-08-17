@@ -24,11 +24,12 @@ DEFAULT_AUM = 100_000
     vol="signals/vol_128",
     symbol_prefix="{provider}.{universe}.",
 )
+@symbol_provider(instruments="instruments/{universe}", no_date=True)
 @symbol_publisher(
     "portfolio/raw.percent",
     "portfolio/raw.shares",
     "signals/raw.signal",
-    symbol_prefix="{provider}.{universe}.{name}.",
+    symbol_prefix="{name}.{provider}.{universe}.",
 )
 def portfolio_construction(
     name: str,
@@ -37,16 +38,16 @@ def portfolio_construction(
     ivol: pd.DataFrame,
     vol: pd.DataFrame,
     config: dict,
+    instruments: pd.DataFrame,
+    provider: str,
+    universe: str,
     **kwargs,
 ):
 
     ivol = ivol.iloc[-1].sort_values(ascending=False)
 
-    symbols = [*ivol.iloc[0:50].index, *ivol.iloc[-50:].index]
-
     strategy = config["portfolio"][name]
     signal_weights = strategy["signal_weights"]
-    instruments = utils.get_instruments(config)
     multiplier = strategy["multiplier"]
     default_weight = strategy["default_weight"]
     weights = pd.Series(multiplier, index=instruments.index)
@@ -66,7 +67,7 @@ def portfolio_construction(
         pd.concat(
             (
                 model_signals.read(
-                    f'{kwargs["config_name"]}.{name}.{signal}'
+                    f"{provider}.{universe}.{signal}"
                     # , columns=symbols
                 ).data
                 * weights

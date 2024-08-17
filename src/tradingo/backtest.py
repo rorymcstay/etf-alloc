@@ -99,8 +99,9 @@ BACKTEST_FIELDS = (
 
 
 @symbol_provider(
-    portfolio="portfolio/{name}.{stage}.shares",
-    prices="prices/{provider}.close",
+    portfolio="portfolio/{name}.{provider}.{universe}.{stage}",
+    prices="prices/{provider}.{universe}.close",
+    symbol_prefix="",
 )
 @symbol_publisher(
     "backtest/portfolio",

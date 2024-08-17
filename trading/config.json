@@ -109,7 +109,7 @@
     },
     "trend": {
       "universe": "etfs",
-      "provider": "finance",
+      "provider": "yfinance",
       "signal_weights": {
         "trend.ewmac_128_64.scaled.capped": 1,
         "trend.ewmac_64_32.scaled.capped": 1
