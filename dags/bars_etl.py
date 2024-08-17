@@ -74,7 +74,7 @@ def get_or_create_signal(
             task_id=task_id,
             python_callable=getattr(signals, function),
             op_kwargs={
-                "model_name": "trend",
+                "model_name": name,
                 "start_date": START_DATE,
                 "end_date": "{{ data_interval_end }}",
                 "signal_name": name,
@@ -147,7 +147,7 @@ def get_or_create_universe(universe, provider, dag, **kwargs):
     )
 
     _ = insts >> prices >> ivol
-    return insts
+    return insts, prices, ivol
 
 
 def _get_or_create_task(task_id, callable, dag, *args, **kwargs):
@@ -207,7 +207,7 @@ def trading_dag(
             )
 
         for name, strategy in config["portfolio"].items():
-            prices = get_or_create_universe(
+            insts, prices, ivol = get_or_create_universe(
                 universe=strategy["universe"],
                 config_name=config["name"],
                 dag=dag,
@@ -304,4 +304,4 @@ def trading_dag(
     return dag
 
 
-trading_dag("etft", start_date=pd.Timestamp("2024-06-06 00:00:00+00:00"))
+trading_dag("etft", start_date=pd.Timestamp("2024-08-15 00:00:00+00:00"))

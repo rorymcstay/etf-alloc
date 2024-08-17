@@ -250,3 +250,5 @@ airflow-build-dockerfile*
 .bars.db
 /test/
 /prod/
+cython_debug/
+src/tradingo/_backtest.c

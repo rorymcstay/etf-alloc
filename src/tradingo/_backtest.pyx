@@ -45,28 +45,27 @@ def compute_backtest(
 
             # net investment
             m_net_investment = max(
-                net_investment[idx_prev],
-                abs(net_position[idx_prev] * avg_open_price[idx_prev])
+                m_net_investment, abs(m_net_position * m_avg_open_price)
             )
             # realized pnl
-            if abs(net_position[idx_prev] + trade_quantity) < abs(net_position[idx_prev]):
+            if abs(m_net_position + trade_quantity) < abs(m_net_position):
                 m_realised_pnl += (
-                    (price - m_avg_open_price) * abs(trade_quantity) * np.sign(net_position[idx_prev])
+                    (price - m_avg_open_price) * abs(trade_quantity) * np.sign(m_net_position)
                 )
-            # total pnl
-            m_total_pnl = m_realised_pnl + m_unrealised_pnl
+
             # avg open price
-            if abs(net_position[idx_prev] + trade_quantity) > abs(net_position[idx_prev]):
+            if abs(m_net_position + trade_quantity) > abs(m_net_position):
                 m_avg_open_price = (
                     (m_avg_open_price * m_net_position) + (price * trade_quantity)
-                ) / (net_position[idx_prev] + trade_quantity)
+                ) / (m_net_position + trade_quantity)
             else:
                 # Check if it is close-and-open
-                if trade_quantity > abs(net_position[idx_prev]):
+                if trade_quantity > abs(m_net_position):
                     m_avg_open_price = price
 
+        # total pnl
+        m_total_pnl = m_realised_pnl + m_unrealised_pnl
         m_net_position += trade_quantity
-        m_unrealised_pnl = (price - m_avg_open_price) * net_position[idx_prev]
 
         unrealised_pnl[idx] = m_unrealised_pnl
         realised_pnl[idx] = m_realised_pnl

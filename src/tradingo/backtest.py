@@ -99,7 +99,7 @@ BACKTEST_FIELDS = (
 
 
 @symbol_provider(
-    portfolio="portfolio/{name}.{stage}",
+    portfolio="portfolio/{name}.{stage}.shares",
     prices="prices/{provider}.close",
 )
 @symbol_publisher(
@@ -126,7 +126,10 @@ def backtest(
         logger.warning("Computing backtest for ticker=%s", ticker)
         inst_prices = prices[ticker].ffill()
         opening_position = portfolio.loc[portfolio.first_valid_index(), ticker]
-        opening_avg_price = prices.loc[portfolio.first_valid_index(), ticker]
+        if opening_position != 0:
+            opening_avg_price = prices.loc[portfolio.first_valid_index(), ticker]
+        else:
+            opening_avg_price = 0
 
         return pd.DataFrame(
             data=_backtest.compute_backtest(

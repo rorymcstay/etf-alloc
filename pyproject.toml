@@ -20,6 +20,9 @@ dependencies = [
   "cython",
 ]
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [build-system]
 requires = ["cython", "numpy", "setuptools"]
 
