@@ -11,7 +11,7 @@ from tradingo.symbols import symbol_provider, symbol_publisher
 logger = logging.getLogger(__name__)
 
 
-@symbol_provider(close="prices/{provider}.{universe}.adj_close", symbol_prefix="")
+@symbol_provider(close="prices/adj_close", symbol_prefix="{provider}.{universe}.")
 @symbol_publisher(
     "signals/{signal_name}",
     "signals/vol_{speed1}",
@@ -95,11 +95,11 @@ def _linear_buffer(signal: np.ndarray, thresholds: np.ndarray):
 
 
 @symbol_publisher(
-    "{library}/{signal}.buffered", symbol_prefix="{model_name}.{provider}.{universe}."
+    "{library}/{signal}.buffered", symbol_prefix="{provider}.{universe}.{model_name}."
 )
 @symbol_provider(
     signal="{library}/{signal}",
-    symbol_prefix="{model_name}.{provider}.{universe}.",
+    symbol_prefix="{provider}.{universe}.{model_name}.",
 )
 def buffered(signal: pd.Series | pd.DataFrame, buffer_width, **kwargs):
 

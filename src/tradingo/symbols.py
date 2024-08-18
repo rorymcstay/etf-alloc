@@ -52,7 +52,7 @@ def parse_symbol(symbol, kwargs, symbol_prefix="", symbol_postfix=""):
 
 
 def symbol_provider(
-    symbol_prefix="{config_name}.",
+    symbol_prefix="",
     no_date=False,
     **symbols,
 ):
@@ -107,7 +107,7 @@ def symbol_provider(
 
 def symbol_publisher(
     *symbols,
-    symbol_prefix="{config_name}.",
+    symbol_prefix="",
     symbol_postfix="",
     astype=None,
     template=None,

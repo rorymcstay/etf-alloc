@@ -7,14 +7,9 @@ import numpy as np
 import arcticdb as adb
 
 from tradingo.symbols import lib_provider, symbol_provider, symbol_publisher
-from tradingo import signals
-from tradingo import utils
 
 
 logger = logging.getLogger(__name__)
-
-
-DEFAULT_AUM = 100_000
 
 
 @lib_provider(model_signals="signals")
@@ -29,7 +24,7 @@ DEFAULT_AUM = 100_000
     "portfolio/raw.percent",
     "portfolio/raw.shares",
     "signals/raw.signal",
-    symbol_prefix="{name}.{provider}.{universe}.",
+    symbol_prefix="{provider}.{universe}.{name}.",
 )
 def portfolio_construction(
     name: str,

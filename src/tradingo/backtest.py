@@ -99,14 +99,14 @@ BACKTEST_FIELDS = (
 
 
 @symbol_provider(
-    portfolio="portfolio/{name}.{provider}.{universe}.{stage}",
+    portfolio="portfolio/{provider}.{universe}.{name}.{stage}",
     prices="prices/{provider}.{universe}.close",
     symbol_prefix="",
 )
 @symbol_publisher(
     "backtest/portfolio",
     *(f"backtest/instrument.{f}" for f in BACKTEST_FIELDS if f != "date"),
-    symbol_prefix="{config_name}.{name}.{stage}.",
+    symbol_prefix="{provider}.{universe}.{name}.{stage}.",
 )
 def backtest(
     *,
@@ -166,20 +166,3 @@ def backtest(
     summary["net_exposure"] = net_exposure
 
     return (summary, *backtest_fields)
-
-
-@lib_provider(backtests="backtest")
-def get_instrument_backtest(*symbol, backtests: Optional[adb.library.Library] = None):
-    return pd.concat(
-        (
-            i.data
-            for i in backtests.read_batch(
-                [
-                    adb.ReadRequest(columns=symbol, symbol=f"ETFT.trend.INSTRUMENT.{f}")
-                    for f in BACKTEST_FIELDS
-                ],
-            )
-        ),
-        keys=BACKTEST_FIELDS,
-        axis=1,
-    )

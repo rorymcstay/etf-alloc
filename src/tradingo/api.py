@@ -1,6 +1,7 @@
 from __future__ import annotations
 from copy import deepcopy
 import inspect
+from os import pathconf_names
 from typing import Optional
 import contextlib
 import pandas as pd
@@ -158,11 +159,19 @@ class _Read:
 
 class Tradingo(adb.Arctic):
 
-    def __init__(self, name, provider, *args, instrument_symbol="etfs", **kwargs):
+    def __init__(
+        self,
+        name,
+        *args,
+        provider: Optional[str] = None,
+        universe: Optional[str] = None,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.name = name
         self.provider = provider
-        self.instrument_symbol = instrument_symbol
+        self.instrument_symbol = universe
+        self.universe = universe
         self._context_args = ()
         self._context_kwargs = {}
 
@@ -177,9 +186,13 @@ class Tradingo(adb.Arctic):
             self._context_kwargs = {}
 
     def _get_path_so_far(self, library):
-        path_so_far = [self.name]
-        if library == "prices":
+        path_so_far = []
+        if library == "instruments":
+            return path_so_far
+        if self.provider:
             path_so_far.append(self.provider)
+        if self.universe:
+            path_so_far.append(self.universe)
         return path_so_far
 
     def __getattr__(self, library):
@@ -195,12 +208,15 @@ class Tradingo(adb.Arctic):
                     common_kwargs={},
                     root=self,
                 )
+
+            assets = []
+            if self.universe:
+                assets = getattr(self.instruments, self.universe)().index.to_list()
+
             return _Read(
                 library=self.get_library(library),
                 path_so_far=path_so_far,
-                assets=getattr(
-                    self.instruments, self.instrument_symbol
-                )().index.to_list(),
+                assets=assets,
                 common_args=self._context_args,
                 common_kwargs=self._context_kwargs,
                 root=self,
