@@ -10,7 +10,7 @@ setup(
                 sources=["src/tradingo/_backtest.pyx"],
             ),
         ],
-        gdb_debug=True,
+        gdb_debug=False,
     ),
     include_dirs=[
         np.get_include(),

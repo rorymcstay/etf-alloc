@@ -1,5 +1,4 @@
 from tradingo.api import Tradingo
-from tradingo.test.fixtures import tradingo, prices, position
 
 from tradingo import signals
 

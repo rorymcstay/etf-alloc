@@ -1,3 +1,5 @@
+from libc.math cimport isnan
+
 cimport numpy as np
 import numpy as np
 
@@ -9,8 +11,8 @@ cpdef compute_backtest(
     double[:] prices,
 ):
 
-    cdef int num_days = trades.shape[0]
-    cdef int idx, idx_prev
+    cdef size_t num_days = trades.shape[0]
+    cdef size_t idx, idx_prev
 
     cdef double[:] unrealised_pnl = np.zeros(num_days)
     cdef double[:] realised_pnl = np.zeros(num_days)
@@ -46,7 +48,7 @@ cpdef compute_backtest(
         m_realised_pnl = realised_pnl[idx_prev]
         m_avg_open_price = avg_open_price[idx_prev]
 
-        if trade_quantity != 0 and not np.isnan(trade_quantity):
+        if trade_quantity != 0 and not isnan(trade_quantity):
 
             # net investment
             m_net_investment = max(
