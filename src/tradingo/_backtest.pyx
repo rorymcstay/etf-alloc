@@ -1,9 +1,12 @@
+cimport cython
 from libc.math cimport isnan
 
 cimport numpy as np
 import numpy as np
 
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
 cpdef compute_backtest(
     double opening_position,
     double opening_avg_price,
