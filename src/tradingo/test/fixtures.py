@@ -34,7 +34,7 @@ def position(prices: pd.DataFrame):
 
 @pytest.fixture
 def tradingo(prices: pd.DataFrame, position: pd.DataFrame) -> Tradingo:
-    t = Tradingo("test", "yfinance", "mem://tradingo")
+    t = Tradingo(name="test", provider="yfinance", uri="mem://tradingo")
     libraries = ["prices", "signals", "backtest", "portfolio", "instruments"]
     for library in libraries:
         t.create_library(library)

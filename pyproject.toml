@@ -11,14 +11,19 @@ classifiers = [
 ]
 dependencies = [
   "numpy",
+  "numba",
   "pandas",
   "pandera",
   "arcticdb",
-  "pytest",
   "PyYAML",
   "yfinance",
-  "cython",
 ]
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-benchmark"  
+]
+
 
 [tool.setuptools.packages.find]
 where = ["src"]

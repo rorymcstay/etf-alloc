@@ -1,13 +1,10 @@
 import pytest
 import pandas as pd
 
-import numpy as np
-
 from tradingo import backtest
-from tradingo.api import Tradingo
 from tradingo.backtest import PnlSnapshot
+from tradingo.test.fixtures import tradingo, prices
 
-from tradingo.test.fixtures import position, prices, tradingo
 from tradingo.test.utils import close_position
 
 
@@ -121,6 +118,8 @@ def test_backtest(prices, portfolio, unrealised_pnl, realised_pnl):
         start_date=portfolio.index[0],
         end_date=portfolio.index[-1],
         stage="raw",
+        provider="yfinance",
+        universe="etfs",
     )
 
     actual_unrealised = bt["backtest/instrument.unrealised_pnl"].squeeze().diff()

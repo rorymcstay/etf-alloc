@@ -15,4 +15,7 @@ def test_buffer_signal(tradingo: Tradingo):
         config_name="test",
         model_name="model",
         library="portfolio",
+        buffer_width=0.5,
+        provider="yfinance",
+        universe="etfs",
     )

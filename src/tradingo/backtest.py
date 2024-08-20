@@ -1,12 +1,10 @@
 import logging
-from typing import Optional
-from typing import NamedTuple
-import arcticdb as adb
+from typing import NamedTuple, Optional
 
 import pandas as pd
 import numpy as np
 
-from tradingo.symbols import lib_provider, symbol_provider, symbol_publisher
+from tradingo.symbols import symbol_provider, symbol_publisher
 from tradingo import _backtest
 
 
@@ -24,7 +22,7 @@ class PnlSnapshot(NamedTuple):
     total_pnl: float = 0
     last_qty: float = 0
     last_trade_price: float = 0
-    last_trade_date: pd.Timestamp = None
+    last_trade_date: Optional[pd.Timestamp] = None
     net_exposure: float = 0
     last_price: float = 0
 
