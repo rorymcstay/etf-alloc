@@ -3,7 +3,6 @@ import pandas as pd
 
 from tradingo import backtest
 from tradingo.backtest import PnlSnapshot
-from tradingo.test.fixtures import tradingo, prices
 
 from tradingo.test.utils import close_position
 
@@ -47,9 +46,28 @@ def test_backtest_integration(benchmark, tradingo):
         start_date=pd.Timestamp("2018-01-01 00:00:00+00:00"),
         end_date=pd.Timestamp.now("utc"),
         name="model",
-        stage="raw",
+        stage="raw.shares",
         config_name="test",
         provider="yfinance",
+        universe="etfs",
+        dry_run=True,
+        arctic=tradingo,
+    )
+
+
+def test_backtest_integration_old(benchmark, tradingo):
+
+    bt = benchmark(
+        backtest.backtest_old,
+        prices="close",
+        portfolio="model",
+        start_date=pd.Timestamp("2018-01-01 00:00:00+00:00"),
+        end_date=pd.Timestamp.now("utc"),
+        name="model",
+        stage="raw.shares",
+        config_name="test",
+        provider="yfinance",
+        universe="etfs",
         dry_run=True,
         arctic=tradingo,
     )

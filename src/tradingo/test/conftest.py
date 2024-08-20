@@ -7,7 +7,7 @@ from tradingo.api import Tradingo
 from tradingo.utils import null_instruments
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def prices() -> pd.DataFrame:
 
     annual_std = 0.12
@@ -23,7 +23,7 @@ def prices() -> pd.DataFrame:
     return (1 + returns).cumprod()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def position(prices: pd.DataFrame):
     return pd.DataFrame(
         np.random.choice((1, 0, -1), prices.shape),
@@ -32,9 +32,11 @@ def position(prices: pd.DataFrame):
     ).cumsum()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def tradingo(prices: pd.DataFrame, position: pd.DataFrame) -> Tradingo:
-    t = Tradingo(name="test", provider="yfinance", uri="mem://tradingo")
+    t = Tradingo(
+        name="test", provider="yfinance", universe="etfs", uri="mem://tradingo"
+    )
     libraries = ["prices", "signals", "backtest", "portfolio", "instruments"]
     for library in libraries:
         t.create_library(library)

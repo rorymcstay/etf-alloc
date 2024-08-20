@@ -121,12 +121,15 @@ def backtest(
 
     def compute_backtest(inst_trades: pd.Series):
 
-        ticker: str = inst_trades.name
-        logger.warning("Computing backtest for ticker=%s", ticker)
-        inst_prices = prices[ticker].ffill()
-        opening_position = portfolio.loc[portfolio.first_valid_index(), ticker]
+        logger.info("Computing backtest for ticker=%s", inst_trades.name)
+        inst_prices = prices[inst_trades.name].ffill()
+        opening_position = portfolio.loc[
+            portfolio.first_valid_index(), inst_trades.name
+        ]
         if opening_position != 0:
-            opening_avg_price = prices.loc[portfolio.first_valid_index(), ticker]
+            opening_avg_price = prices.loc[
+                portfolio.first_valid_index(), inst_trades.name
+            ]
         else:
             opening_avg_price = 0
 
@@ -141,6 +144,94 @@ def backtest(
             columns=BACKTEST_FIELDS,
         )
 
+    backtest = pd.concat(
+        (compute_backtest(data) for _, data in trades.items()), keys=trades, axis=1
+    ).reorder_levels([1, 0], axis=1)
+
+    backtest_fields = (backtest.loc[:, f] for f in BACKTEST_FIELDS if f != "date")
+
+    net_exposure = (backtest["net_position"] * prices.ffill()).sum(axis=1)
+
+    summary = (
+        backtest[
+            [
+                "net_investment",
+                "unrealised_pnl",
+                "realised_pnl",
+                "total_pnl",
+            ]
+        ]
+        .groupby(level=0, axis=1)
+        .sum()
+    )
+    summary["net_exposure"] = net_exposure
+
+    return (summary, *backtest_fields)
+
+
+@symbol_provider(
+    portfolio="portfolio/{provider}.{universe}.{name}.{stage}",
+    prices="prices/{provider}.{universe}.close",
+    symbol_prefix="",
+)
+@symbol_publisher(
+    "backtest/portfolio",
+    *(f"backtest/instrument.{f}" for f in BACKTEST_FIELDS if f != "date"),
+    symbol_prefix="{provider}.{universe}.{name}.{stage}.",
+)
+def backtest_old(
+    *,
+    portfolio: pd.DataFrame,
+    prices: pd.DataFrame,
+    name: str,
+    stage: str = "raw",
+    **kwargs,
+):
+    trades = portfolio.ffill().fillna(0.0).diff()
+    prices = prices.ffill()
+
+    logger.info("running backtest for %s on stage %s with %s", name, stage, kwargs)
+
+    def compute_backtest(inst_trades: pd.Series):
+
+        ticker: str = inst_trades.name
+        logger.warning("Computing backtest for ticker=%s", ticker)
+        inst_prices = prices[ticker].ffill()
+        opening_position = portfolio.loc[portfolio.first_valid_index(), ticker]
+        opening_avg_price = prices.loc[portfolio.first_valid_index(), ticker]
+
+        current_pnl = PnlSnapshot(
+            date=inst_trades.first_valid_index() - pd.offsets.BDay(1),
+            net_position=opening_position,
+            avg_open_price=opening_avg_price,
+        )
+
+        pnl_series = []
+
+        data = pd.concat(
+            (inst_trades.rename("trade"), inst_prices.rename("price")), axis=1
+        )
+
+        for date, (trade, last_price) in data.iterrows():
+            current_pnl = current_pnl.on_market_data(last_price=last_price, date=date)
+            if not np.isnan(trade) and trade:
+                current_pnl = current_pnl.on_trade(
+                    last_price, trade_quantity=trade, trade_date=date
+                )
+
+            pnl_series.append(current_pnl)
+
+        return (
+            pd.DataFrame(pnl_series)
+            .set_index(["date"])
+            .astype(
+                {
+                    k: v
+                    for k, v in PnlSnapshot.__annotations__.items()
+                    if "date" not in k
+                }
+            )
+        )
     backtest = pd.concat(
         (compute_backtest(data) for _, data in trades.items()), keys=trades, axis=1
     ).reorder_levels([1, 0], axis=1)

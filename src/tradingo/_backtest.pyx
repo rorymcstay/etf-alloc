@@ -2,7 +2,7 @@ cimport numpy as np
 import numpy as np
 
 
-def compute_backtest(
+cpdef compute_backtest(
     double opening_position,
     double opening_avg_price,
     double[:] trades,
@@ -22,12 +22,17 @@ def compute_backtest(
     net_position[0] = opening_position
     avg_open_price[0] = opening_avg_price
 
+    # transient output variables
     cdef double m_net_position = opening_position
     cdef double m_avg_open_price = opening_avg_price
     cdef double m_unrealised_pnl = 0
     cdef double m_total_pnl = 0
     cdef double m_realised_pnl = 0
     cdef double m_net_investment = 0
+
+    # loop variables
+    cdef double price
+    cdef double trade_quantity
 
     for idx in range(1, num_days):
 
