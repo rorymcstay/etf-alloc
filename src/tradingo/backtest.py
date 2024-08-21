@@ -137,8 +137,8 @@ def backtest(
             data=_backtest.compute_backtest(
                 opening_position,
                 opening_avg_price,
-                inst_trades.fillna(0.0).to_numpy(),
-                inst_prices.to_numpy(),
+                inst_trades.fillna(0.0).to_numpy().astype("float32"),
+                inst_prices.to_numpy().astype("float32"),
             ),
             index=inst_trades.index,
             columns=BACKTEST_FIELDS,
@@ -232,6 +232,7 @@ def backtest_old(
                 }
             )
         )
+
     backtest = pd.concat(
         (compute_backtest(data) for _, data in trades.items()), keys=trades, axis=1
     ).reorder_levels([1, 0], axis=1)

@@ -1,43 +1,50 @@
 cimport cython
-from libc.math cimport isnan
+from libc.math cimport isnan, signbit
+from cython.view cimport array as cvarray
 
 cimport numpy as np
 import numpy as np
 
 
+cdef sign(float x):
+    if signbit(x):
+        return -1
+    return 1
+
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cpdef compute_backtest(
-    double opening_position,
-    double opening_avg_price,
-    double[:] trades,
-    double[:] prices,
+    float opening_position,
+    float opening_avg_price,
+    float[:] trades,
+    float[:] prices,
 ):
 
     cdef size_t num_days = trades.shape[0]
     cdef size_t idx, idx_prev
-
-    cdef double[:] unrealised_pnl = np.zeros(num_days)
-    cdef double[:] realised_pnl = np.zeros(num_days)
-    cdef double[:] total_pnl = np.zeros(num_days)
-    cdef double[:] net_investment = np.zeros(num_days)
-    cdef double[:] net_position = np.zeros(num_days)
-    cdef double[:] avg_open_price = np.zeros(num_days)
+ 
+    cdef float[:] unrealised_pnl = cvarray(shape=(num_days,), itemsize=sizeof(float), format="f")
+    cdef float[:] realised_pnl = cvarray(shape=(num_days,), itemsize=sizeof(float), format="f")
+    cdef float[:] total_pnl = cvarray(shape=(num_days,), itemsize=sizeof(float), format="f")
+    cdef float[:] net_investment = cvarray(shape=(num_days,), itemsize=sizeof(float), format="f")
+    cdef float[:] net_position = cvarray(shape=(num_days,), itemsize=sizeof(float), format="f")
+    cdef float[:] avg_open_price = cvarray(shape=(num_days,), itemsize=sizeof(float), format="f")
 
     net_position[0] = opening_position
     avg_open_price[0] = opening_avg_price
 
     # transient output variables
-    cdef double m_net_position = opening_position
-    cdef double m_avg_open_price = opening_avg_price
-    cdef double m_unrealised_pnl = 0
-    cdef double m_total_pnl = 0
-    cdef double m_realised_pnl = 0
-    cdef double m_net_investment = 0
+    cdef float m_net_position = opening_position
+    cdef float m_avg_open_price = opening_avg_price
+    cdef float m_unrealised_pnl = 0
+    cdef float m_total_pnl = 0
+    cdef float m_realised_pnl = 0
+    cdef float m_net_investment = 0
 
     # loop variables
-    cdef double price
-    cdef double trade_quantity
+    cdef float price
+    cdef float trade_quantity
 
     for idx in range(1, num_days):
 
@@ -60,7 +67,7 @@ cpdef compute_backtest(
             # realized pnl
             if abs(m_net_position + trade_quantity) < abs(m_net_position):
                 m_realised_pnl += (
-                    (price - m_avg_open_price) * abs(trade_quantity) * np.sign(m_net_position)
+                    (price - m_avg_open_price) * abs(trade_quantity) * sign(m_net_position)
                 )
 
             # avg open price
