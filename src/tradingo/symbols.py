@@ -98,7 +98,9 @@ def symbol_provider(
 
             logger.info("Providing %s symbols from %s", symbols_data.keys(), arctic)
 
-            return func(*args, **kwargs, start_date=start_date, end_date=end_date)
+            return func(
+                *args, **kwargs, arctic=arctic, start_date=start_date, end_date=end_date
+            )
 
         return wrapper
 
