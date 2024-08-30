@@ -17,4 +17,5 @@ def test_buffer_signal(tradingo: Tradingo):
         buffer_width=0.5,
         provider="yfinance",
         universe="etfs",
+        arctic=tradingo,
     )

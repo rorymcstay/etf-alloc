@@ -1,4 +1,4 @@
-name: Tradingo tests
+name: Tradingo CICD
 
 on: [push]
 
