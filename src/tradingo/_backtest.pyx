@@ -31,6 +31,9 @@ cpdef compute_backtest(
     cdef float[:] net_position = cvarray(shape=(num_days,), itemsize=sizeof(float), format="f")
     cdef float[:] avg_open_price = cvarray(shape=(num_days,), itemsize=sizeof(float), format="f")
 
+    unrealised_pnl[0] = 0
+    realised_pnl[0] = 0
+
     net_position[0] = opening_position
     avg_open_price[0] = opening_avg_price
 

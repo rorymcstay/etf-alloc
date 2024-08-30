@@ -147,8 +147,8 @@ def test_backtest_smoke(tradingo, prices_, portfolio_, unrealised_pnl, realised_
     )
 
     pd.testing.assert_series_equal(
-        actual_unrealised.astype("float64"),
-        expected_unrealised,
+        actual_unrealised,
+        expected_unrealised.astype("float32"),
         check_names=False,
         check_freq=False,
         rtol=1e-4,
@@ -160,10 +160,11 @@ def test_backtest_smoke(tradingo, prices_, portfolio_, unrealised_pnl, realised_
         eval(realised_pnl) if isinstance(realised_pnl, str) else realised_pnl
     )
     pd.testing.assert_series_equal(
-        actual_realised.astype("float64"),
-        expected_realised,
+        actual_realised,
+        expected_realised.astype("float32"),
         check_names=False,
         check_freq=False,
+        rtol=1e-4,
     )
 
 
