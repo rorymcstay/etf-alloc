@@ -95,12 +95,12 @@ def portfolio_construction(
 
     logger.info("signal_data: %s", signal_value)
 
-    positions = signal_value
+    positions = signal_value.reindex_like(close).ffill()
 
     if constraints["long_only"]:
         positions[(positions < 0.0)] = 0.0
 
-    pct_position = positions.div(positions.transpose().sum(), axis=0)
+    pct_position = positions.div(positions.transpose().sum(), axis=0).fillna(0.0)
     for col in pct_position.columns:
         pct_position.loc[
             pct_position.index == pct_position.first_valid_index(), col
