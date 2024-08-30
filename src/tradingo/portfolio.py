@@ -1,5 +1,5 @@
 import logging
-import random
+import re
 
 import pandas as pd
 import numpy as np
@@ -58,28 +58,40 @@ def portfolio_construction(
         )
         logger.info("Weights: %s", weights)
 
-    signal_value = (
-        pd.concat(
-            (
-                model_signals.read(
-                    f"{provider}.{universe}.{signal}"
-                    # , columns=symbols
-                ).data
-                * weights
-                * signal_weight
-                for signal, signal_weight in signal_weights.items()
-            ),
-            keys=signal_weights,
-            axis=1,
+    if signal_weights:
+
+        signal_value = (
+            pd.concat(
+                (
+                    model_signals.read(
+                        f"{provider}.{universe}.{signal}"
+                        # , columns=symbols
+                    ).data
+                    * weights
+                    * signal_weight
+                    for signal, signal_weight in signal_weights.items()
+                ),
+                keys=signal_weights,
+                axis=1,
+            )
+            .transpose()
+            .groupby(level=[1])
+            .sum()
+            .transpose()
+            .ffill()
+            .fillna(0)
         )
-        .transpose()
-        .groupby(level=[1])
-        .sum()
-        .transpose()
-        .ffill()
-        .fillna(0)
-        .div(10 * vol)
-    )
+
+    else:
+        signal_value = weights * pd.DataFrame(
+            1,
+            index=close.index,
+            columns=close.columns,
+        )
+
+    if strategy["vol_scale"]:
+
+        weights = weights.div(10 * vol)
 
     logger.info("signal_data: %s", signal_value)
 
@@ -94,7 +106,7 @@ def portfolio_construction(
             pct_position.index == pct_position.first_valid_index(), col
         ] = 0.0
 
-    share_position = (pct_position * config["aum"]) / close
+    share_position = (pct_position * strategy["aum"]) / close
 
     return (pct_position, share_position, signal_value)
 
@@ -107,9 +119,7 @@ def instrument_ivol(close, provider, **kwargs):
     ivols = []
 
     for symbol in pct_returns.columns:
-        universe = pct_returns[
-            random.sample([c for c in pct_returns.columns if c != symbol], 100)
-        ]
+        universe = pct_returns.drop(symbol, axis=1)
 
         def vol(uni):
             return (1 - (1 + uni).prod(axis=1).pow(1 / 100)).ewm(10).std()
@@ -118,3 +128,57 @@ def instrument_ivol(close, provider, **kwargs):
         ivols.append(ivol.rename(symbol))
 
     return (pd.concat(ivols, axis=1).rename_axis("Symbol"),)
+
+
+@symbol_provider(
+    close="prices/close",
+    symbol_prefix="{provider}.{universe}.",
+)
+@symbol_provider(instruments="instruments/{universe}", no_date=True)
+@symbol_publisher(
+    "portfolio/raw.percent",
+    "portfolio/raw.shares",
+    symbol_prefix="{provider}.{universe}.{name}.",
+)
+def position_from_trades(
+    close: pd.DataFrame,
+    instruments: pd.DataFrame,
+    aum: float,
+    trade_file: str,
+    **kwargs,
+):
+
+    trades = (
+        pd.read_csv(trade_file, parse_dates=["Date"])
+        .dropna(axis=0, how="all")
+        .sort_values(["Date"])
+    )
+    trades = trades[
+        trades["Order type"].isin(["AtBest", "Quote and Deal"])
+        & trades["Order status"].eq("Completed")
+    ]
+    trades["Ticker"] = (
+        trades["Investment"].apply(
+            lambda t: re.match(".*\(([A-Z]{4})\)", t).groups()[0]
+        )
+        + ".L"
+    )
+    position_shares = (
+        trades.set_index(["Date", "Ticker"])
+        .groupby(["Date", "Ticker"])
+        .sum()
+        .unstack()["My units"]
+        .fillna(0.0)
+        .cumsum()
+        .reindex_like(
+            close,
+            method="ffill",
+        )
+        .fillna(0.0)
+    )
+
+    position_pct = (position_shares * close) / aum
+    return (
+        position_pct,
+        position_shares,
+    )

@@ -105,6 +105,7 @@ BACKTEST_FIELDS = (
     "backtest/portfolio",
     *(f"backtest/instrument.{f}" for f in BACKTEST_FIELDS if f != "date"),
     symbol_prefix="{provider}.{universe}.{name}.{stage}.",
+    astype="float64",
 )
 def backtest(
     *,

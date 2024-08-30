@@ -11,11 +11,32 @@ from tradingo.symbols import symbol_provider, symbol_publisher
 logger = logging.getLogger(__name__)
 
 
+@symbol_provider(
+    close="prices/adj_close",
+    symbol_prefix="{provider}.{universe}.",
+)
+@symbol_publisher(
+    template="signals/vol_{0}",
+    symbol_prefix="{provider}.{universe}.",
+)
+def vol(
+    speeds,
+    close: pd.DataFrame,
+    **kwargs,
+):
+    returns = np.log(close / close.shift())
+    return tuple(
+        (
+            returns.ewm(halflife=speed).std(),
+            (speed,),
+        )
+        for speed in speeds
+    )
+
+
 @symbol_provider(close="prices/adj_close", symbol_prefix="{provider}.{universe}.")
 @symbol_publisher(
     "signals/{signal_name}",
-    "signals/vol_{speed1}",
-    "signals/vol_{speed2}",
     symbol_prefix="{provider}.{universe}.",
 )
 def ewmac_signal(
@@ -44,8 +65,6 @@ def ewmac_signal(
             close.ewm(halflife=speed2, min_periods=speed2).mean()
             - close.ewm(halflife=speed1, min_periods=speed1).mean()
         ),
-        returns.ewm(halflife=speed1).std(),
-        returns.ewm(halflife=speed2).std(),
     )
 
 

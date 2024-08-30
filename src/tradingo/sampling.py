@@ -1,6 +1,7 @@
 from tradingo.symbols import symbol_provider, symbol_publisher
 from typing import Literal, Optional
 from arcticdb import LibraryOptions
+from yfinance import Ticker
 
 import pandas as pd
 
@@ -54,12 +55,13 @@ Provider = Literal[
 ]
 
 
-@symbol_publisher("instruments/{universe}")
+@symbol_publisher("instruments/{universe}", write_pickle=True)
 def download_instruments(
     index_col: str,
     *,
     html: Optional[str] = None,
     file: Optional[str] = None,
+    tickers: Optional[list[str]] = None,
     **kwargs,
 ):
 
@@ -72,6 +74,16 @@ def download_instruments(
         )
     if html:
         return (pd.read_html(html)[0].set_index(index_col).rename_axis("Symbol"),)
+
+    if tickers:
+
+        return (
+            (
+                pd.DataFrame({t: Ticker(t).get_info() for t in tickers})
+                .transpose()
+                .rename_axis("Symbol")
+            ),
+        )
     raise ValueError(file)
 
 

@@ -73,8 +73,6 @@ def symbol_provider(
                 ):
                     orig_symbol_data[symbol] = kwargs.pop(symbol)
 
-            logger.info("Providing %s symbols from %s", symbols, arctic)
-
             symbols_data = {
                 k: (
                     arctic.get_library(
@@ -98,6 +96,8 @@ def symbol_provider(
             kwargs.update(symbols_data)
             kwargs.update(orig_symbol_data)
 
+            logger.info("Providing %s symbols from %s", symbols_data.keys(), arctic)
+
             return func(*args, **kwargs, start_date=start_date, end_date=end_date)
 
         return wrapper
@@ -112,6 +112,7 @@ def symbol_publisher(
     astype=None,
     template=None,
     library_options=None,
+    write_pickle=False,
 ):
 
     def decorator(func):
@@ -123,7 +124,7 @@ def symbol_publisher(
 
             arctic = arctic or adb.Arctic(ARCTIC_URL)
             out = func(*args, arctic=arctic, **kwargs)
-            logger.info("Publishing %s to %s", symbols, arctic)
+            logger.info("Publishing %s to %s", symbols or template, arctic)
 
             # yf kws:
             #    kwdout = out.pop(-1)
@@ -162,6 +163,9 @@ def symbol_publisher(
                     )
                     if isinstance(data.index, pd.DatetimeIndex):
                         lib.update(sym, data, upsert=True, **params)
+                    elif write_pickle:
+                        lib.write_pickle(sym, data, **params)
+
                     else:
                         lib.write(sym, data, **params)
 

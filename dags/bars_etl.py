@@ -15,7 +15,11 @@ import pandas as pd
 from tradingo.symbols import ARCTIC_URL, symbol_provider, symbol_publisher
 from tradingo import signals
 from tradingo.backtest import backtest
-from tradingo.portfolio import instrument_ivol, portfolio_construction
+from tradingo.portfolio import (
+    instrument_ivol,
+    portfolio_construction,
+    position_from_trades,
+)
 from tradingo import sampling
 from tradingo.utils import get_config
 
@@ -25,7 +29,6 @@ logger = logging.getLogger(__name__)
 HOME_DIR = pathlib.Path(os.environ["AIRFLOW_HOME"]) / "trading"
 START_DATE = "2018-01-01 00:00:00+00:00"
 PROVIDER = "yfinance"
-AUM = 70_000
 ARCTIC = adb.Arctic(ARCTIC_URL)
 
 
@@ -109,11 +112,10 @@ def get_or_create_signal(
 
 DAG_DEFAULT_ARGS = {
     "depends_on_past": True,
-    "max_active_runs": 1,
 }
 
 
-def get_or_create_universe(universe, provider, dag, **kwargs):
+def get_or_create_universe(universe, provider, dag, vol_speeds, **kwargs):
     insts = _get_or_create_task(
         task_id=universe,
         callable=sampling.download_instruments,
@@ -144,12 +146,24 @@ def get_or_create_universe(universe, provider, dag, **kwargs):
         universe=universe,
         **kwargs,
     )
+    vol = _get_or_create_task(
+        speeds=vol_speeds,
+        task_id=f"{universe}.vol",
+        callable=signals.vol,
+        dag=dag,
+        start_date=START_DATE,
+        end_date="{{ data_interval_end }}",
+        provider=provider,
+        universe=universe,
+        **kwargs,
+    )
 
     _ = insts >> prices >> ivol
-    return insts, prices, ivol
+    _ = prices >> vol
+    return insts, prices, ivol, vol
 
 
-def _get_or_create_task(task_id, callable, dag, *args, **kwargs):
+def _get_or_create_task(*args, task_id, callable, dag, **kwargs):
     try:
         return PythonOperator(
             task_id=task_id,
@@ -174,6 +188,7 @@ def trading_dag(
         schedule=schedule,
         catchup=catchup,
         default_args=DAG_DEFAULT_ARGS,
+        max_active_runs=1,
     ) as dag:
         config = get_config(config_path)
 
@@ -206,46 +221,79 @@ def trading_dag(
             )
 
         for name, strategy in config["portfolio"].items():
-            insts, prices, ivol = get_or_create_universe(
+            insts, prices, ivol, vol = get_or_create_universe(
                 universe=strategy["universe"],
                 config_name=config["name"],
                 dag=dag,
                 **config["universe"][strategy["universe"]],
+                vol_speeds=config["volatility"]["speeds"],
             )
 
-            if not strategy["signal_weights"]:
-                continue
+            if trades_file := strategy.get("from_trades_file"):
 
-            pos = PythonOperator(
-                task_id=make_task_id("portfolio.raw.shares", name),
-                python_callable=portfolio_construction,
-                op_kwargs={
-                    "start_date": START_DATE,
-                    "end_date": "{{ data_interval_end }}",
-                    "name": name,
-                    "config_name": config["name"],
-                    "provider": strategy["provider"],
-                    "universe": strategy["universe"],
-                    "config": config,
-                },
-            )
-            buffered_pos = PythonOperator(
-                task_id=make_task_id("portfolio.raw.shares.buffered", name),
-                python_callable=signals.buffered,
-                op_kwargs={
-                    "start_date": START_DATE,
-                    "end_date": "{{ data_interval_end }}",
-                    "name": name,
-                    "config_name": config["name"],
-                    "provider": strategy["provider"],
-                    "signal": "raw.shares",
-                    "library": "portfolio",
-                    "model_name": name,
-                    "buffer_width": strategy["buffer_width"],
-                    "universe": strategy["universe"],
-                },
-            )
-            _ = pos >> buffered_pos
+                pos = PythonOperator(
+                    task_id=make_task_id("portfolio.raw.shares", name),
+                    python_callable=position_from_trades,
+                    op_kwargs={
+                        "start_date": START_DATE,
+                        "end_date": "{{ data_interval_end }}",
+                        "name": name,
+                        "config_name": config["name"],
+                        "provider": strategy["provider"],
+                        "universe": strategy["universe"],
+                        "config": config,
+                        "trade_file": trades_file,
+                        "aum": strategy["aum"],
+                    },
+                )
+            else:
+
+                pos = PythonOperator(
+                    task_id=make_task_id("portfolio.raw.shares", name),
+                    python_callable=portfolio_construction,
+                    op_kwargs={
+                        "start_date": START_DATE,
+                        "end_date": "{{ data_interval_end }}",
+                        "name": name,
+                        "config_name": config["name"],
+                        "provider": strategy["provider"],
+                        "universe": strategy["universe"],
+                        "config": config,
+                    },
+                )
+                buffered_pos = PythonOperator(
+                    task_id=make_task_id("portfolio.raw.shares.buffered", name),
+                    python_callable=signals.buffered,
+                    op_kwargs={
+                        "start_date": START_DATE,
+                        "end_date": "{{ data_interval_end }}",
+                        "name": name,
+                        "config_name": config["name"],
+                        "provider": strategy["provider"],
+                        "signal": "raw.shares",
+                        "library": "portfolio",
+                        "model_name": name,
+                        "buffer_width": strategy["buffer_width"],
+                        "universe": strategy["universe"],
+                    },
+                )
+                _ = pos >> buffered_pos
+                _ = buffered_pos >> PythonOperator(
+                    task_id=make_task_id("backtest", f"{name}.buffered"),
+                    python_callable=backtest,
+                    op_kwargs={
+                        "start_date": START_DATE,
+                        "end_date": "{{ data_interval_end }}",
+                        "name": name,
+                        "stage": "raw.shares.buffered",
+                        "config_name": config["name"],
+                        "provider": strategy["provider"],
+                        "universe": strategy["universe"],
+                    },
+                )
+
+            _ = prices >> pos
+            _ = vol >> pos
             _ = pos >> PythonOperator(
                 task_id=make_task_id("backtest", name),
                 python_callable=backtest,
@@ -259,19 +307,7 @@ def trading_dag(
                     "universe": strategy["universe"],
                 },
             )
-            _ = buffered_pos >> PythonOperator(
-                task_id=make_task_id("backtest", f"{name}.buffered"),
-                python_callable=backtest,
-                op_kwargs={
-                    "start_date": START_DATE,
-                    "end_date": "{{ data_interval_end }}",
-                    "name": name,
-                    "stage": "raw.shares.buffered",
-                    "config_name": config["name"],
-                    "provider": strategy["provider"],
-                    "universe": strategy["universe"],
-                },
-            )
+
             # _ = pos >> PythonOperator(
             #    task_id=make_task_id("calculate_trades", name),
             #    python_callable=calculate_trades,
@@ -307,4 +343,4 @@ def trading_dag(
     return dag
 
 
-trading_dag("etft", start_date=pd.Timestamp("2024-08-15 00:00:00+00:00"))
+trading_dag("etft", start_date=pd.Timestamp("2024-08-29 00:00:00+00:00"))

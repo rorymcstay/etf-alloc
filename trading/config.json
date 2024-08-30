@@ -11,6 +11,47 @@
       "file": "/home/rory/dev/airflow/trading/universe.csv",
       "index_col": "Ticker",
       "provider": "yfinance"
+    },
+    "vanguard": {
+      "provider": "yfinance",
+      "index_col": null,
+      "tickers": [
+        "VUSA.L",
+        "VWRL.L",
+        "VUAG.L",
+        "VWRP.L",
+        "VUKE.L",
+        "VHYL.L",
+        "VEUR.L",
+        "VEVE.L",
+        "VHVG.L",
+        "VMID.L",
+        "VNRT.L",
+        "VFEM.L",
+        "VERX.L",
+        "VUKG.L",
+        "VNRG.L",
+        "VAPX.L",
+        "VEUA.L",
+        "VJPB.L",
+        "VMIG.L",
+        "VHYG.L",
+        "VERG.L",
+        "VFEG.L",
+        "VDPG.L",
+        "V3AB.L",
+        "V3AM.L",
+        "VGER.L",
+        "V3NB.L",
+        "V3EA.L",
+        "VJPU.L",
+        "V3PB.L",
+        "V3MB.L",
+        "V3EL.L",
+        "V3NM.L",
+        "V3MM.L",
+        "V3PM.L"
+      ]
     }
   },
   "futures": [
@@ -20,7 +61,12 @@
     "VIX",
     "ES"
   ],
-  "aum": 70000,
+  "volatility": {
+    "speeds": [
+      128,
+      64
+    ]
+  },
   "signal_configs": {
     "trend.ewmac_64_32": {
       "function": "ewmac_signal",
@@ -98,16 +144,42 @@
     }
   },
   "portfolio": {
+    "isa": {
+      "from_trades_file": "/home/rory/Downloads/vanguard-trades.csv",
+      "aum": 70865.23,
+      "universe": "vanguard",
+      "provider": "yfinance",
+      "instrument_weights": {
+        "VUSA.L": 1,
+        "VGOV.L": 1,
+        "VUTY.L": 1
+      },
+      "multiplier": 1,
+      "default_weight": 1,
+      "constraints": {
+        "long_only": 1
+      },
+      "buffer_width": 1,
+      "signal_weights": {},
+      "vol_scale": false
+    },
     "null": {
-      "universe": "etfs",
-      "provider": "finance",
+      "aum": 70000,
+      "universe": "sp500",
+      "provider": "yfinance",
       "signal_weights": [],
       "instrument_weights": {},
       "multiplier": 0,
       "default_weight": 1,
-      "buffer_width": 0
+      "buffer_width": 0,
+      "constraints": {
+        "long_only": false
+      },
+      "vol_scale": false
     },
     "trend": {
+      "aum": 70000,
+      "vol_scale": true,
       "universe": "etfs",
       "provider": "yfinance",
       "signal_weights": {
