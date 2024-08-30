@@ -21,7 +21,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest",
-  "pytest-benchmark"  
+  "pytest-benchmark",
+  "black",
+  "nb-clean",
 ]
 
 

@@ -23,3 +23,5 @@ jobs:
         run: pytest
       - name: Format Tradingo
         run: black ./ --check
+      - name: Check notebooks
+        run: nb-clean check ./notebooks
