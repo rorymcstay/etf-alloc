@@ -125,7 +125,7 @@ def test_backtest_integration_old(benchmark, tradingo):
         ),
     ],
 )
-def test_backtest_smoke(prices, portfolio, unrealised_pnl, realised_pnl):
+def test_backtest_smoke(tradingo, prices, portfolio, unrealised_pnl, realised_pnl):
 
     bt = backtest.backtest(
         portfolio=portfolio,
@@ -138,6 +138,7 @@ def test_backtest_smoke(prices, portfolio, unrealised_pnl, realised_pnl):
         stage="raw",
         provider="yfinance",
         universe="etfs",
+        arctic=tradingo,
     )
 
     actual_unrealised = bt["backtest/instrument.unrealised_pnl"].squeeze().diff()
