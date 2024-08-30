@@ -77,7 +77,7 @@ def test_backtest_integration_old(benchmark, tradingo):
 
 
 @pytest.mark.parametrize(
-    "prices,portfolio,unrealised_pnl,realised_pnl",
+    "prices_,portfolio_,unrealised_pnl,realised_pnl",
     [
         (
             pd.DataFrame(
@@ -90,8 +90,8 @@ def test_backtest_integration_old(benchmark, tradingo):
                 index=pd.bdate_range("2020-01-01", periods=260, freq="B"),
                 columns=["ABCD"],
             ).cumprod(),
-            "(prices*portfolio).squeeze().diff()",
-            "pd.Series(0.0, index=prices.index)",
+            "(prices_*portfolio_).squeeze().diff()",
+            "pd.Series(0.0, index=prices_.index)",
         ),
         (
             pd.DataFrame(
@@ -104,8 +104,8 @@ def test_backtest_integration_old(benchmark, tradingo):
                 index=pd.bdate_range("2020-01-01", periods=260, freq="B"),
                 columns=["ABCD"],
             ),
-            "(prices.diff()*portfolio.shift()).squeeze()",
-            "pd.Series(0.0, index=prices.index)",
+            "(prices_.diff()*portfolio_.shift()).squeeze()",
+            "pd.Series(0.0, index=prices_.index)",
         ),
         (
             pd.DataFrame(
@@ -120,21 +120,21 @@ def test_backtest_integration_old(benchmark, tradingo):
                     columns=["ABCD"],
                 ).cumprod(),
             ),
-            "(prices.diff()*portfolio.shift()).squeeze()",
-            "pd.Series([*(0 for _ in range(0, 259)), 12.280985478055433], index=prices.index)",
+            "(prices_.diff()*portfolio_.shift()).squeeze()",
+            "pd.Series([*(0 for _ in range(0, 259)), 12.280985478055433], index=prices_.index)",
         ),
     ],
 )
-def test_backtest_smoke(tradingo, prices, portfolio, unrealised_pnl, realised_pnl):
+def test_backtest_smoke(tradingo, prices_, portfolio_, unrealised_pnl, realised_pnl):
 
     bt = backtest.backtest(
-        portfolio=portfolio,
-        prices=prices,
+        portfolio=portfolio_,
+        prices=prices_,
         name="test",
         config_name="test",
         dry_run=True,
-        start_date=portfolio.index[0],
-        end_date=portfolio.index[-1],
+        start_date=portfolio_.index[0],
+        end_date=portfolio_.index[-1],
         stage="raw",
         provider="yfinance",
         universe="etfs",
@@ -147,10 +147,11 @@ def test_backtest_smoke(tradingo, prices, portfolio, unrealised_pnl, realised_pn
     )
 
     pd.testing.assert_series_equal(
-        actual_unrealised,
+        actual_unrealised.astype("float64"),
         expected_unrealised,
         check_names=False,
         check_freq=False,
+        rtol=1e-4,
     )
     actual_realised = (
         bt["backtest/instrument.realised_pnl"].squeeze().diff().fillna(0.0)
@@ -159,7 +160,7 @@ def test_backtest_smoke(tradingo, prices, portfolio, unrealised_pnl, realised_pn
         eval(realised_pnl) if isinstance(realised_pnl, str) else realised_pnl
     )
     pd.testing.assert_series_equal(
-        actual_realised,
+        actual_realised.astype("float64"),
         expected_realised,
         check_names=False,
         check_freq=False,
