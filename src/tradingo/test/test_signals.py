@@ -5,7 +5,7 @@ from tradingo import signals
 
 def test_buffer_signal(tradingo: Tradingo):
 
-    return signals.buffered(
+    signals.buffered(
         signal=tradingo.portfolio.model.raw.shares(),
         thresholds=tradingo.portfolio.model.raw.shares() * 0.1,
         dry_run=True,
