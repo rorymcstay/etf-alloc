@@ -1,4 +1,5 @@
 import logging
+import importlib
 import os
 import pathlib
 import re
@@ -11,6 +12,8 @@ from airflow.models import Operator
 
 import arcticdb as adb
 import pandas as pd
+from sqlalchemy.orm import strategy_options
+from tradingo.cli import make_airflow_dag
 
 from tradingo.symbols import ARCTIC_URL, symbol_provider, symbol_publisher
 from tradingo import signals
@@ -18,6 +21,7 @@ from tradingo.backtest import backtest
 from tradingo.portfolio import (
     instrument_ivol,
     portfolio_construction,
+    portfolio_optimization,
     position_from_trades,
 )
 from tradingo import sampling
@@ -36,6 +40,13 @@ def make_task_id(task, symbol=None) -> str:
         symbol = re.sub(r"\^|/", ".", str(symbol).strip())
         return f"{task}.{symbol}"
     return task
+
+
+def get_function(function):
+
+    module, name = function.rsplit(".", maxsplit=1)
+
+    return getattr(importlib.import_module(module), name)
 
 
 @symbol_provider(
@@ -66,14 +77,22 @@ def calculate_trades(
 
 
 def get_or_create_signal(
-    name, universe, provider, signal, function, config, depends_on, dag: DAG, prices
+    name,
+    universe,
+    provider,
+    signal,
+    function,
+    config,
+    depends_on,
+    dag: DAG,
+    prices,
 ) -> Operator:
     signal = signal.copy()
-    task_id = make_task_id("signal", name)
+    task_id = make_task_id("signal", ".".join((universe, provider, name)))
     try:
         signal = PythonOperator(
             task_id=task_id,
-            python_callable=getattr(signals, function),
+            python_callable=get_function(function),
             op_kwargs={
                 "model_name": name,
                 "start_date": START_DATE,
@@ -95,8 +114,8 @@ def get_or_create_signal(
         _ = (
             get_or_create_signal(
                 sig,
-                signal_config["universe"],
-                signal_config["provider"],
+                universe,
+                provider,
                 signal_config["kwargs"],
                 signal_config["function"],
                 config,
@@ -110,13 +129,13 @@ def get_or_create_signal(
 
 
 DAG_DEFAULT_ARGS = {
-    "depends_on_past": True,
+    "depends_on_past": False,
 }
 
 
 def get_or_create_universe(universe, provider, dag, vol_speeds, **kwargs):
     insts = _get_or_create_task(
-        task_id=universe,
+        task_id=f"{universe}.instruments",
         callable=sampling.download_instruments,
         dag=dag,
         universe=universe,
@@ -130,8 +149,6 @@ def get_or_create_universe(universe, provider, dag, vol_speeds, **kwargs):
         start_date=START_DATE,
         end_date="{{ data_interval_end }}",
         provider=provider,
-        name=universe,
-        instruments=universe,
         **kwargs,
     )
 
@@ -228,68 +245,46 @@ def trading_dag(
                 vol_speeds=config["volatility"]["speeds"],
             )
 
-            if trades_file := strategy.get("from_trades_file"):
-
-                pos = PythonOperator(
-                    task_id=make_task_id("portfolio.raw.shares", name),
-                    python_callable=position_from_trades,
-                    op_kwargs={
-                        "start_date": START_DATE,
-                        "end_date": "{{ data_interval_end }}",
-                        "name": name,
-                        "config_name": config["name"],
-                        "provider": strategy["provider"],
-                        "universe": strategy["universe"],
-                        "config": config,
-                        "trade_file": trades_file,
-                        "aum": strategy["aum"],
-                    },
-                )
-            else:
-
-                pos = PythonOperator(
-                    task_id=make_task_id("portfolio.raw.shares", name),
-                    python_callable=portfolio_construction,
-                    op_kwargs={
-                        "start_date": START_DATE,
-                        "end_date": "{{ data_interval_end }}",
-                        "name": name,
-                        "config_name": config["name"],
-                        "provider": strategy["provider"],
-                        "universe": strategy["universe"],
-                        "config": config,
-                    },
-                )
-                buffered_pos = PythonOperator(
-                    task_id=make_task_id("portfolio.raw.shares.buffered", name),
-                    python_callable=signals.buffered,
-                    op_kwargs={
-                        "start_date": START_DATE,
-                        "end_date": "{{ data_interval_end }}",
-                        "name": name,
-                        "config_name": config["name"],
-                        "provider": strategy["provider"],
-                        "signal": "raw.shares",
-                        "library": "portfolio",
-                        "model_name": name,
-                        "buffer_width": strategy["buffer_width"],
-                        "universe": strategy["universe"],
-                    },
-                )
-                _ = pos >> buffered_pos
-                _ = buffered_pos >> PythonOperator(
-                    task_id=make_task_id("backtest", f"{name}.buffered"),
-                    python_callable=backtest,
-                    op_kwargs={
-                        "start_date": START_DATE,
-                        "end_date": "{{ data_interval_end }}",
-                        "name": name,
-                        "stage": "raw.shares.buffered",
-                        "config_name": config["name"],
-                        "provider": strategy["provider"],
-                        "universe": strategy["universe"],
-                    },
-                )
+            pos = PythonOperator(
+                task_id=make_task_id("portfolio.raw.shares", name),
+                python_callable=get_function(strategy["function"]),
+                op_kwargs={
+                    "start_date": START_DATE,
+                    "end_date": "{{ data_interval_end }}",
+                    "name": name,
+                    **strategy["kwargs"],
+                },
+            )
+            buffered_pos = PythonOperator(
+                task_id=make_task_id("portfolio.raw.shares.buffered", name),
+                python_callable=signals.buffered,
+                op_kwargs={
+                    "start_date": START_DATE,
+                    "end_date": "{{ data_interval_end }}",
+                    "name": name,
+                    "config_name": config["name"],
+                    "provider": strategy["provider"],
+                    "signal": "raw.shares",
+                    "library": "portfolio",
+                    "model_name": name,
+                    "buffer_width": strategy["buffer_width"],
+                    "universe": strategy["universe"],
+                },
+            )
+            _ = pos >> buffered_pos
+            _ = buffered_pos >> PythonOperator(
+                task_id=make_task_id("backtest", f"{name}.buffered"),
+                python_callable=backtest,
+                op_kwargs={
+                    "start_date": START_DATE,
+                    "end_date": "{{ data_interval_end }}",
+                    "name": name,
+                    "stage": "raw.shares.buffered",
+                    "config_name": config["name"],
+                    "provider": strategy["provider"],
+                    "universe": strategy["universe"],
+                },
+            )
 
             _ = prices >> pos
             _ = vol >> pos
@@ -327,8 +322,8 @@ def trading_dag(
                     prices
                     >> get_or_create_signal(
                         signal,
-                        signal_config["universe"],
-                        signal_config["provider"],
+                        strategy["universe"],
+                        strategy["provider"],
                         signal_config["kwargs"],
                         function=signal_config["function"],
                         config=config,
@@ -342,4 +337,19 @@ def trading_dag(
     return dag
 
 
-trading_dag("etft", start_date=pd.Timestamp("2024-08-29 00:00:00+00:00"))
+# trading_dag("etft", start_date=pd.Timestamp("2024-08-29 00:00:00+00:00"))
+etft = make_airflow_dag(
+    name="etft",
+    config=HOME_DIR / "config.json",
+    dag_start_date=pd.Timestamp("2024-10-08 00:00:00+00:00"),
+    start_date=pd.Timestamp("2023-11-07 00:00:00+00"),
+    end_date="{{ data_interval_end }}",
+)
+
+igtrading = make_airflow_dag(
+    name="igtrading",
+    config=HOME_DIR / "ig-trading.json",
+    dag_start_date=pd.Timestamp("2024-10-08 00:00:00+00:00"),
+    start_date=pd.Timestamp("2023-11-07 00:00:00+00"),
+    end_date="{{ data_interval_end }}",
+)

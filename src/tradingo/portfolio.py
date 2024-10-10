@@ -3,6 +3,7 @@ import re
 
 import pandas as pd
 import numpy as np
+import riskfolio as rf
 
 import arcticdb as adb
 
@@ -32,22 +33,26 @@ def portfolio_construction(
     close: pd.DataFrame,
     ivol: pd.DataFrame,
     vol: pd.DataFrame,
-    config: dict,
     instruments: pd.DataFrame,
     provider: str,
     universe: str,
+    signal_weights: dict,
+    multiplier: float,
+    default_weight: float,
+    constraints: dict,
+    instrument_weights: dict,
+    vol_scale: bool,
+    aum: float,
     **kwargs,
 ):
 
     ivol = ivol.iloc[-1].sort_values(ascending=False)
 
-    strategy = config["portfolio"][name]
-    signal_weights = strategy["signal_weights"]
-    multiplier = strategy["multiplier"]
-    default_weight = strategy["default_weight"]
     weights = pd.Series(multiplier, index=instruments.index)
-    constraints = strategy["constraints"]
-    for key, weights_config in strategy["instrument_weights"].items():
+
+    instruments["Symbol"] = instruments.index
+
+    for key, weights_config in instrument_weights.items():
 
         if key not in instruments.columns:
             continue
@@ -89,7 +94,7 @@ def portfolio_construction(
             columns=close.columns,
         )
 
-    if strategy["vol_scale"]:
+    if vol_scale:
 
         weights = weights.div(10 * vol)
 
@@ -106,9 +111,80 @@ def portfolio_construction(
             pct_position.index == pct_position.first_valid_index(), col
         ] = 0.0
 
-    share_position = (pct_position * strategy["aum"]) / close
+    share_position = (pct_position * aum) / close
 
     return (pct_position, share_position, signal_value)
+
+
+@symbol_provider(
+    close="prices/{provider}.{universe}.close",
+    factor_returns="prices/{factor_provider}.{factor_universe}.close",
+)
+@symbol_provider(instruments="instruments/{universe}", no_date=True)
+@symbol_publisher(
+    "portfolio/raw.percent",
+    "portfolio/raw.shares",
+    symbol_prefix="{provider}.{universe}.{name}.",
+)
+def portfolio_optimization(
+    close: pd.DataFrame,
+    factor_returns: pd.DataFrame,
+    optimizer_config: dict,
+    rebalance_rule: str,
+    min_periods: int,
+    aum: float,
+    **kwargs,
+):
+    def get_weights(
+        returns,
+        factors,
+    ):
+        port = rf.Portfolio(returns=returns)
+
+        port.assets_stats(method_mu="hist", method_cov="ledoit")
+        port.lowerret = 0.00056488 * 1.5
+
+        port.factors = factors
+
+        port.factors_stats(
+            method_mu="hist",
+            method_cov="ledoit",
+            feature_selection="PCR",
+        )
+
+        w = port.optimization(
+            model="FM",
+            rm="MV",
+            obj="Sharpe",
+            hist=False,
+        )
+        return (
+            w.squeeze() if w is not None else pd.Series(np.nan, index=returns.columns)
+        )
+
+    asset_returns = close.pct_change().dropna()
+    factor_returns = close.pct_change().dropna().reindex(asset_returns.index)
+
+    data = []
+    for i, _ in enumerate(asset_returns.index):
+
+        if i < min_periods:
+            data.append(
+                pd.Series(np.nan, index=asset_returns.columns).to_frame().transpose()
+            )
+            continue
+
+        ret_subset = asset_returns.iloc[:i]
+        data.append(
+            get_weights(ret_subset, factor_returns.loc[ret_subset.index])
+            .to_frame()
+            .transpose()
+        )
+
+    pct_position = pd.concat(data, keys=asset_returns.index).droplevel(1)
+    share_position = (pct_position * aum) / close
+
+    return (pct_position, share_position)
 
 
 @symbol_provider(close="prices/adj_close", symbol_prefix="{provider}.{universe}.")
@@ -172,8 +248,8 @@ def position_from_trades(
         .cumsum()
         .reindex_like(
             close,
-            method="ffill",
         )
+        .ffill()
         .fillna(0.0)
     )
 
