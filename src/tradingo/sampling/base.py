@@ -15,6 +15,10 @@ ServiceType = TypeVar("T")
 class DataInterface(ABC, Generic[ServiceType]):
     """
     Base interface for data providers.
+
+    Args:
+        service: The service instance to use for data fetching.
+        library: The ArcticDB library instance.
     """
 
     instrument_type: InstrumentType
@@ -38,21 +42,27 @@ class DataInterface(ABC, Generic[ServiceType]):
         return self._library
 
     @abstractmethod
-    def _get_service(self): ...
+    def _get_service(self) -> ServiceType:
+        """instatiate the service instance."""
 
     @abstractmethod
-    def list_instruments(self, search: str = None) -> list[str]: ...
+    def list_instruments(self, search: str = None) -> list[str]:
+        """List available instruments."""
 
     @abstractmethod
-    def fetch_instruments(self, symbols: list[str]) -> list[str]: ...
+    def fetch_instruments(self, symbols: list[str]) -> list[str]:
+        """Fetch instruments' static data by symbols."""
 
     @abstractmethod
-    def sample(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame: ...
+    def sample(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        """Fetch historical data for a specific instrument."""
 
     @abstractmethod
     def create_universe(
+        self,
         instruments: pd.DataFrame,
         pricelib: Library,
         end_date: pd.Timestamp,
         start_date: pd.Timestamp,
-    ): ...
+    ):
+        """Create a universe of instruments."""

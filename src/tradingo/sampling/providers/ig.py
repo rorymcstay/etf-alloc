@@ -20,7 +20,7 @@ class IGDataInterface(DataInterface[IGService]):
     Data interface for IG data provider.
     """
 
-    instrument_type: InstrumentType = InstrumentType.IG
+    instrument_type: InstrumentType = InstrumentType.CFD
 
     @staticmethod
     def _get_service(
