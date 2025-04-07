@@ -5,7 +5,7 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 from tenacity import Retrying, wait_exponential, retry_if_exception_type
-from trading_ig.rest import IGService, ApiExceededException
+from trading_ig.rest import IGService, ApiExceededException, IGException
 
 from tradingo.config import IGTradingConfig
 from tradingo.sampling.base import DataInterface
@@ -47,26 +47,29 @@ class IGDataInterface(DataInterface[IGService]):
         service.create_session()
         return service
 
-    def list_instruments(self, search: str = None) -> list[str]:
+    def list_instruments(self, search: str = None) -> pd.DataFrame:
         """
         List instruments based on a search string.
         """
-        if search:
-            return self.service.search_instruments(search)["epics"]
-        return []
+        data = pd.DataFrame(self.service.search_markets(search))
+        if data.empty and "epic" not in data.columns:
+            return data
+        return data.set_index("epic").rename_axis("Symbol", axis=0)
 
     def fetch_instruments(self, symbols: list[str]) -> pd.DataFrame:
         """
         Fetch instruments based on a list of symbols.
         """
-
-        return (
-            pd.DataFrame(
-                (self.service.fetch_market_by_epic(e)["instrument"] for e in symbols)
-            )
-            .set_index("epic")
-            .rename_axis("Symbol", axis=0)
-        )
+        res = []
+        exceptions = []
+        for sym in symbols:
+            try:
+                res.append(self.service.fetch_market_by_epic(sym)["instrument"])
+            except Exception as ex:  # IG raises generic exception
+                exceptions.append(ex)
+        if exceptions:
+            raise IGException(exceptions)
+        return pd.DataFrame(res).set_index("epic").rename_axis("Symbol", axis=0)
 
     def sample(
         self,

@@ -9,9 +9,13 @@ PROVIDERS: dict[str:DataInterface] = {
 }
 
 
-def list_instruments(provider: str, instrument_type: str):
-    return PROVIDERS[provider].list_instruments(instrument_type)
+def list_instruments(provider: str, search: str):
+    return PROVIDERS[provider].list_instruments(search)
 
 
-def fetch_data(provider: str, symbol: str, start: str, end: str):
-    return PROVIDERS[provider].fetch_data(symbol, start, end)
+def fetch_instruments(provider: str, symbols: list[str]):
+    return PROVIDERS[provider].fetch_instruments(symbols)
+
+
+def sample(provider: str, symbol: str, start: str, end: str, **kwargs):
+    return PROVIDERS[provider].sample(symbol, start, end, **kwargs)

@@ -24,14 +24,14 @@ class DataInterface(ABC, Generic[ServiceType]):
     instrument_type: InstrumentType
 
     def __init__(self, service: Optional[ServiceType] = None, library: Library = None):
-        self._service = service or self._get_service()
+        self._service = service
         self._library: Library = library
 
     @property
     def service(self) -> ServiceType:
         """the provider service instance."""
         if not self._service:
-            raise ValueError("Service not set.")
+            self._service = self._get_service()
         return self._service
 
     @property
