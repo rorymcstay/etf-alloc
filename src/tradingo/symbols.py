@@ -4,10 +4,11 @@ import functools
 import inspect
 import logging
 from collections import defaultdict
-from typing import DefaultDict, NamedTuple, Optional
+from typing import Any, Callable, DefaultDict, NamedTuple, Optional
 from urllib.parse import parse_qsl, urlparse
 
 import arcticdb as adb
+from arcticdb.arctic import Library
 import pandas as pd
 from arcticdb_ext.exceptions import InternalException
 
@@ -18,7 +19,7 @@ class SymbolParseError(Exception):
     """raised when cant parse symbol"""
 
 
-def add_params(function, *args):
+def add_params(function: Callable[...], *args: str):
     origsig = inspect.signature(function)
     orig_params = list(origsig.parameters.values())
     for arg in args:
@@ -77,12 +78,19 @@ class Symbol(NamedTuple):
         return cls(lib, symbol_prefix + sym + symbol_postfix, kwargs)
 
 
-def lib_provider(**libs):
-    def decorator(func):
+def lib_provider(**libs: str):
+    def decorator(func: Callable[...]):
         @functools.wraps(func)
-        def wrapper(*args, arctic: adb.Arctic, **kwargs):
+        def wrapper(*args: str, arctic: adb.Arctic, **kwargs: str | Library):
             libs_ = {
-                k: arctic.get_library(kwargs.get(k, v), create_if_missing=True)
+                k: (
+                    arctic.get_library(
+                        str(kwargs.get(k, v)),
+                        create_if_missing=True,
+                    )
+                    if not isinstance(kwargs.get(k), Library)
+                    else k
+                )
                 for k, v in libs.items()
             }
             kwargs.update(libs_)
@@ -103,18 +111,18 @@ def lib_provider(**libs):
 
 
 def symbol_provider(
-    symbol_prefix="",
-    no_date=False,
-    **symbols,
+    symbol_prefix: str = "",
+    no_date: bool = False,
+    **symbols: str,
 ):
-    def decorator(func):
+    def decorator(func: Callable[..., tuple[pd.DataFrame | pd.Series]]):
         @functools.wraps(func)
         def wrapper(
-            *args,
+            *args: Any,
             arctic: adb.Arctic,
-            start_date=None,
-            end_date=None,
-            **kwargs,
+            start_date: Optional[pd.Timestamp] = None,
+            end_date: Optional[pd.Timestamp] = None,
+            **kwargs: Any,
         ):
             orig_symbol_data = {}
             requested_symbols = symbols.copy()
@@ -129,7 +137,7 @@ def symbol_provider(
                 if symbol in kwargs and kwargs[symbol] is None:
                     requested_symbols.pop(symbol)
 
-            def get_symbol_data(v, with_no_date=False):
+            def get_symbol_data(v: str, with_no_date: bool = False):
                 symbol = Symbol.parse(v, kwargs, symbol_prefix=symbol_prefix)
                 try:
                     return (
@@ -184,12 +192,12 @@ def symbol_provider(
 
 
 def envoke_symbology_function(
-    function,
-    args,
-    kwargs,
-    arctic,
-    start_date=None,
-    end_date=None,
+    function: Callable[..., tuple[pd.DataFrame | pd.Series]],
+    args: Any,
+    kwargs: Any,
+    arctic: adb.Arctic,
+    start_date: Optional[pd.Timestamp] = None,
+    end_date: Optional[pd.Timestamp] = None,
 ):
     sig = inspect.signature(function)
 
@@ -204,30 +212,26 @@ def envoke_symbology_function(
 
 
 def symbol_publisher(
-    *symbols,
-    symbol_prefix="",
-    symbol_postfix="",
-    astype=None,
-    template=None,
-    library_options=None,
-    write_pickle=False,
+    *symbols: str,
+    symbol_prefix: str = "",
+    symbol_postfix: str = "",
+    astype: Optional[dict[str, Any]] = None,
+    template: Optional[str] = None,
+    library_options: Optional[adb.LibraryOptions] = None,
+    write_pickle: bool = False,
 ):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(
-            *args,
+            *args: Any,
             arctic: adb.Arctic,
-            dry_run=True,
+            dry_run: bool = True,
             snapshot: Optional[str] = None,
             clean: bool = False,
-            **kwargs,
+            **kwargs: Any,
         ):
             out = envoke_symbology_function(func, args, kwargs, arctic)
             logger.info("Publishing %s to %s", symbols or template, arctic)
-
-            # yf kws:
-            #    kwdout = out.pop(-1)
-            #
             if template:
                 out, symbols_ = tuple(zip(*out))
                 formatted_symbols = tuple(template.format(*s) for s in symbols_)

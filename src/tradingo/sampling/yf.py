@@ -1,5 +1,7 @@
 """Yahoo Finance data provider."""
 
+import pandas as pd
+
 import logging
 
 import yfinance as yf
@@ -12,7 +14,7 @@ def sample_equity(
     start_date: str,
     end_date: str,
     interval: str = "1d",
-):
+) -> tuple[pd.DataFrame]:
     return (
         yf.download(
             [ticker],

@@ -40,8 +40,9 @@ def read_config_template(filepath: pathlib.Path, variables):
     raise ValueError(f"Unhandled file type: '{filepath.suffix}'")
 
 
-def process_includes(config, variables):
+def process_includes(config: dict[str, Any], variables: dict[str, Any]):
     out = {}
+    variables = variables or {}
 
     for key, value in config.items():
         if isinstance(value, dict) and "include" in value:
@@ -213,8 +214,12 @@ class Task:
         return self._dependencies
 
 
-def collect_task_configs(config, _tasks: Optional[dict[str, Any]] = None):
+def collect_task_configs(
+    config, _tasks: Optional[dict[str, Any]] = None, variables=None
+):
     tasks = _tasks or {}
+
+    config = process_includes(config, variables)
 
     for key, value in config.items():
         if isinstance(value, dict) and "depends_on" in value:

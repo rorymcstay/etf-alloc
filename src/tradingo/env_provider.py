@@ -5,7 +5,7 @@ import json
 import os
 import pathlib
 import typing
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import jinja2
 import pandas as pd
@@ -19,7 +19,7 @@ class EnvProviderError(Exception):
     """"""
 
 
-def getbool_(val):
+def getbool_(val: str) -> bool:
     if isinstance(val, (int, bool)):
         return bool(val)
     if val.lower() in {"true", "yes", "1"}:
@@ -29,7 +29,10 @@ def getbool_(val):
     raise ValueError(val)
 
 
-def get_cls(cls):
+T = type | Callable[...]
+
+
+def get_cls(cls: type) -> T | tuple[type, T, T] | tuple[type, T]:
     if cls is int:
         return int
     if cls is float:
@@ -59,8 +62,11 @@ def get_cls(cls):
     raise EnvProviderError(f"Unhandled type '{cls}'")
 
 
-def _read_dict(cls, val):
-    containercls, kcls, vcls = cls
+def _read_dict(
+    cls: tuple[type, type, type],
+    val: str | typing.Mapping,
+) -> typing.Mapping:
+    containercls, _, _ = cls
     if isinstance(val, str):
         return containercls(json.loads(val))
     elif isinstance(val, typing.Mapping):

@@ -31,7 +31,7 @@ def download_instruments(
     file: Optional[str] = None,
     tickers: Optional[list[str]] = None,
     epics: Optional[list[str]] = None,
-):
+) -> tuple[pd.DataFrame]:
     if file:
         return (
             pd.read_csv(

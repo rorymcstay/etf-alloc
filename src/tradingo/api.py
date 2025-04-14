@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import inspect
 import re
-from typing import Any, Optional
+from typing import Any, Callable, Generator, Optional
 
 import arcticdb as adb
 import pandas as pd
@@ -16,11 +16,11 @@ READ_SIG = inspect.signature(adb.arctic.Library.read)
 class _Read:
     def __init__(
         self,
-        path_so_far,
+        path_so_far: list[str],
         library: adb.library.Library,
-        assets,
-        common_args,
-        common_kwargs,
+        assets: list[str],
+        common_args: Any,
+        common_kwargs: Any,
         root: Tradingo,
     ):
         self._path_so_far = path_so_far
@@ -31,15 +31,15 @@ class _Read:
         self._common_kwargs = common_kwargs
         self._root = root
 
-    def __dir__(self):
+    def __dir__(self) -> list[str]:
         return [*self.list(), *super().__dir__()]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'Namespace("{self._path}")'
 
-    def __getattr__(self, symbol):
+    def __getattr__(self, symbol) -> _Read:
         return self.__class__(
-            (*self._path_so_far, symbol),
+            [*self._path_so_far, symbol],
             library=self._library,
             assets=self._assets,
             common_args=self._common_args,
@@ -47,7 +47,7 @@ class _Read:
             root=self._root,
         )
 
-    def __getitem__(self, symbol):
+    def __getitem__(self, symbol) -> _Read:
         return self.__getattr__(symbol)
 
     def __call__(self, *args, **kwargs) -> pd.DataFrame:
@@ -69,7 +69,7 @@ class _Read:
 
         callback_kwargs = {}
 
-        def get_callback(operation):
+        def get_callback(operation: str) -> Callable[...]:
             for i in (pd.DataFrame, tradingo.utils, pd):
                 try:
                     return getattr(i, operation)
@@ -84,7 +84,7 @@ class _Read:
                 k: v for k, v in kwargs.items() if k in callback_sig.parameters.keys()
             }
 
-        def get_data_at_path(path, kw) -> pd.DataFrame:
+        def get_data_at_path(path: list[str], kw: Any) -> pd.DataFrame:
             kw.setdefault(
                 "columns",
                 (
@@ -96,13 +96,15 @@ class _Read:
 
             for k in self._common_kwargs:
                 kw.pop(k, None)
-            return self._library.read(
-                ".".join(path),
-                *args,
-                *self._common_args,
-                **kw,
-                **self._common_kwargs,
-            ).data
+            return pd.DataFrame(
+                self._library.read(
+                    ".".join(path),
+                    *args,
+                    *self._common_args,
+                    **kw,
+                    **self._common_kwargs,
+                ).data
+            )
 
         lhs = get_data_at_path(part_one_path, lib_kwargs)
 
@@ -137,10 +139,10 @@ class _Read:
             return callback(*callback_args, **callback_kwargs)
         return lhs
 
-    def update(self, *args, **kwargs):
+    def update(self, *args: Any, **kwargs: Any):
         self._library.update(self._path, *args, **kwargs)
 
-    def list(self, *args, **kwargs):
+    def list(self, *args: Any, **kwargs: Any) -> list[str]:
         if self._path_so_far:
             regex = re.escape(".".join((self._path_so_far)) + ".")
             kwargs["regex"] = regex + kwargs.setdefault("regex", "")
@@ -156,13 +158,13 @@ class _Read:
             )
         )
 
-    def head(self, *args, **kwargs):
-        return self._library.head(self._path, *args, **kwargs).data
+    def head(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        return pd.DataFrame(self._library.head(self._path, *args, **kwargs).data)
 
-    def tail(self, *args, **kwargs):
-        return self._library.tail(self._path, *args, **kwargs).data
+    def tail(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        return pd.DataFrame(self._library.tail(self._path, *args, **kwargs).data)
 
-    def exists(self):
+    def exists(self) -> bool:
         """Return true if symbol exists"""
         return bool(self._library.list_symbols(regex=f"^{re.escape(self._path)}$"))
 
@@ -170,10 +172,10 @@ class _Read:
 class Tradingo(adb.Arctic):
     def __init__(
         self,
-        *args,
+        *args: str,
         provider: Optional[str] = None,
         universe: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ):
         super().__init__(*args, **kwargs)
         self._provider = provider
@@ -182,7 +184,7 @@ class Tradingo(adb.Arctic):
         self._context_kwargs: dict[str, Any] = {}
 
     @contextlib.contextmanager
-    def common_args(self, *args, **kwargs):
+    def common_args(self, *args, **kwargs) -> Generator[Tradingo, None, None]:
         try:
             self._context_args = args
             self._context_kwargs = kwargs
@@ -191,7 +193,7 @@ class Tradingo(adb.Arctic):
             self._context_args = ()
             self._context_kwargs = {}
 
-    def _get_path_so_far(self, library):
+    def _get_path_so_far(self, library) -> list[str]:
         path_so_far = []
         if library == "instruments":
             return path_so_far
@@ -201,7 +203,7 @@ class Tradingo(adb.Arctic):
             path_so_far.append(self._universe)
         return path_so_far
 
-    def __getattr__(self, library):
+    def __getattr__(self, library) -> _Read:
         if library in self.list_libraries():
             path_so_far = self._get_path_so_far(library)
             if library == "instruments":
@@ -229,7 +231,7 @@ class Tradingo(adb.Arctic):
 
         return super().__getattr__(library)
 
-    def __dir__(self):
+    def __dir__(self) -> list[str]:
         return [*self.list_libraries(), *super().__dir__()]
 
 
@@ -239,8 +241,8 @@ class VolSurface(Tradingo):
         symbol: str,
         start_date: pd.Timestamp = pd.Timestamp("1970-01-01 00:00+00:00"),
         end_date: pd.Timestamp = pd.Timestamp.now("utc"),
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> pd.DataFrame:
         with self.common_args(date_range=(start_date, end_date)):
             futures = (
                 pd.concat(

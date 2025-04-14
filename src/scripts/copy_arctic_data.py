@@ -1,3 +1,4 @@
+import re
 from arcticdb import Arctic
 
 library = "prices"
@@ -11,16 +12,16 @@ source_uri = "lmdb:///home/rory/dev/tradingo-plat/data/prod/tradingo.db"
 
 
 def sync_symbols(
-    library,
-    symbol_regex,
-    source_uri,
-    target_uri,
+    library_name: str,
+    symbol_regex: str | re.Pattern,
+    source_uri: str,
+    target_uri: str,
 ):
     source_a = Arctic(source_uri)
     target_a = Arctic(target_uri)
 
-    source_lib = source_a.get_library(library)
-    target_lib = target_a.get_library(library, create_if_missing=True)
+    source_lib = source_a.get_library(library_name)
+    target_lib = target_a.get_library(library_name, create_if_missing=True)
 
     for sym in source_lib.list_symbols(regex=symbol_regex):
         data = source_lib.read(sym)

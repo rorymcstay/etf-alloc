@@ -34,7 +34,7 @@ MULTIPLIERS = {
 }
 
 
-def cli_app():
+def cli_app() -> argparse.ArgumentParser:
     app = argparse.ArgumentParser("load-historical-data")
 
     app.add_argument("--path", type=Path, required=True, nargs="+")
@@ -52,7 +52,7 @@ def cli_app():
 FILE_REGEX = r"^([A-Z0-9\.]+)_Candlestick_([0-9]+_[MDHS])_(BID|ASK)_([0-9]{2}\.[0-9]{2}\.[0-9]{4})-([0-9]{2}\.[0-9]{2}\.[0-9]{4}).csv$"
 
 
-def main():
+def main() -> None:
     args = cli_app().parse_args()
 
     a = Arctic(args.arctic_uri)
@@ -81,22 +81,16 @@ def main():
 def read_backfill(
     paths: List[Path],
     end_date: Optional[pd.Timestamp] = None,
-    **kwargs,
-):
+) -> tuple[pd.DataFrame]:
     data_files = defaultdict(list)
 
     for path in paths:
         for file in os.listdir(path):
             if match := re.match(FILE_REGEX, file):
-                symbol, frequency, field, start_date, end_date = match.groups()
-
-                # need to group by symbol
+                symbol, _, field, _, end_date = match.groups()
 
                 data_files[(field.lower(), symbol)].append(path / file)
 
-    # symbol, ohlc, symbol
-    #
-    #
     def read_file(f):
         logger.warning("Reading %s", f)
         out = pd.read_csv(
@@ -130,49 +124,16 @@ def read_backfill(
         result = result[result.index <= end_date]
 
     return (
-        (result["bid"]["Open"], ("bid", "open")),
-        (result["bid"]["High"], ("bid", "high")),
-        (result["bid"]["Low"], ("bid", "low")),
-        (result["bid"]["Close"], ("bid", "close")),
-        (result["ask"]["Open"], ("ask", "open")),
-        (result["ask"]["High"], ("ask", "high")),
-        (result["ask"]["Low"], ("ask", "low")),
-        (result["ask"]["Close"], ("ask", "close")),
-        (((result["ask"]["Open"] + result["bid"]["Open"]) / 2), ("mid", "open")),
-        (((result["ask"]["High"] + result["bid"]["High"]) / 2), ("mid", "high")),
-        (((result["ask"]["Low"] + result["bid"]["Low"]) / 2), ("mid", "low")),
-        (((result["ask"]["Close"] + result["bid"]["Close"]) / 2), ("mid", "close")),
+        result["bid"]["Open"],
+        result["bid"]["High"],
+        result["bid"]["Low"],
+        result["bid"]["Close"],
+        result["ask"]["Open"],
+        result["ask"]["High"],
+        result["ask"]["Low"],
+        result["ask"]["Close"],
+        ((result["ask"]["Open"] + result["bid"]["Open"]) / 2),
+        ((result["ask"]["High"] + result["bid"]["High"]) / 2),
+        ((result["ask"]["Low"] + result["bid"]["Low"]) / 2),
+        ((result["ask"]["Close"] + result["bid"]["Close"]) / 2),
     )
-
-
-if __name__ == "__main__":
-    import sys
-
-    logging.getLogger(__name__).setLevel(logging.INFO)
-
-    env = os.environ.get("ENVIRONMENT", "dev")
-    dir = Path(f"{Path.home()}/dev/tradingo-plat/data/{env}")
-    dir.mkdir(parents=True, exist_ok=True)
-
-    sys.argv.extend(
-        [
-            "--arctic-uri",
-            f"lmdb://{dir}/tradingo.db",
-            "--path",
-            str(Path.home() / "dev" / "market-data" / "GAS"),
-            str(Path.home() / "dev" / "market-data" / "USA500"),
-            str(Path.home() / "dev" / "market-data" / "BRENT"),
-            str(Path.home() / "dev" / "market-data" / "USTBOND"),
-            str(Path.home() / "dev" / "market-data" / "COCOA"),
-            # "--dry-run",
-            "--clean",
-            "--provider",
-            "ig-trading",
-            "--universe",
-            "im-multi-asset",
-            "--end-date",
-            "2018-10-21 00:00:00+00:00",
-        ]
-    )
-
-    main()
