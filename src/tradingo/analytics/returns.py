@@ -140,7 +140,7 @@ def compounded_returns(
 
     pct_returns_ = pct_returns(prices, fx, period=1, freq=freq)
 
-    returns_ = (((pct_returns_ + 1).cumprod()) - 1).fillna(0)
+    returns_ = (((pct_returns_ + 1).cumprod()) - 1)
 
     if period:
         if not returns_.shift(period).notna().any().all():
