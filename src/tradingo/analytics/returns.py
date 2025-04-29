@@ -223,7 +223,7 @@ def fx_adjusted_returns(
             f"prices columns {set(prices.columns)} do not match currency_map symbols {set(symbols_ccys)}"
         )
 
-    ccy_syms_map = {}
+    ccy_syms_map: dict[str, list[str]] = {}
     for symbol, ccy in symbols_ccys.items():
         if ccy not in ccy_syms_map:
             ccy_syms_map[ccy] = []
