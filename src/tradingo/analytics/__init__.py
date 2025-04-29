@@ -1,6 +1,7 @@
 """Tradingo analytics functions."""
 
 __all__ = [
+    "vol",
     "cov",
     "expectation",
     "sharpe_ratio",
