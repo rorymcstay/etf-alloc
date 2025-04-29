@@ -65,9 +65,9 @@ def test_compounded_returns(price_series, fx_series):
         ("compounded", compounded_returns),
     ],
 )
-def test_returns_api_dispatch(price_series, fx_series, kind, func):
-    unified = returns(price_series, fx=fx_series, kind=kind)
-    direct = func(price_series, fx=fx_series)
+def test_returns_api_dispatch(price_series, kind, func):
+    unified = returns(price_series, kind=kind)
+    direct = func(price_series)
     pd.testing.assert_series_equal(unified, direct)
 
 
