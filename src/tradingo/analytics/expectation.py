@@ -8,8 +8,16 @@ import pandas as pd
 from pandas.core.window.rolling import BaseWindow
 
 
-def safe_dataframe_window(dataframe, how, kwargs) -> BaseWindow:
+def safe_dataframe_window(
+    dataframe: pd.DataFrame, how: str, kwargs
+) -> BaseWindow | pd.DataFrame:
     """get a dataframe aggergation window safely"""
+    if how == "insample":
+        if kwargs:
+            raise ValueError(
+                f"no kwargs should be passed when evaluating the full sample, got: {kwargs}"
+            )
+        return dataframe
     try:
         aggregator: Callable = getattr(dataframe, how)
         agg_buffer: BaseWindow = aggregator(**kwargs)
@@ -32,8 +40,8 @@ def expectation(
 
     :param dataframe: DataFrame containing the data.
     :param annualisation: The annualisation factor, by default 260.
-    :param how: The method of calculating expectation, either "exponential" or "rolling",
-        by default "exponential".
+    :param how: A DataFrame method which returns a BaseWindow [pandas.core.window.rolling]
+        for calculating covariance: { ewm | rolling | expanding } or 'insample' for the full sample
     :param **kwargs: keyword arguments
         Additional arguments for the ewm (exponentially weighted mean) method.
         For rolling expectation, the window size must be specified in kwargs.

@@ -30,7 +30,7 @@ def cov(
     :param dataframe: DataFrame containing the data.
     :param annualisation: The annualisation factor, by default 260.
     :param how: A DataFrame method which returns a BaseWindow [pandas.core.window.rolling]
-        for calculating covariance: { ewm | rolling | expanding }
+        for calculating covariance: { ewm | rolling | expanding } or 'insample' for the full sample
     :param demean: Whether to demean the data, by default True.
             - True -> E[(X - E[X]) * (Y - E[Y])]
             - False -> E[X * Y]
