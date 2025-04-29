@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def factor_betas(
     asset_returns: pd.DataFrame,
     factor_returns: pd.DataFrame,
-    how: str = "exponential",
+    how: str = "ewm",
     **kwargs,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -30,8 +30,8 @@ def factor_betas(
 
     :param asset_returns: Asset returns DataFrame.
     :param factor_returns: Factor returns DataFrame.
-    :param how: Method of calculating covariance, either "exponential" or "rolling",
-        by default "exponential".
+    :param how: A DataFrame method which returns a BaseWindow [pandas.core.window.rolling]
+        for calculating covariance: { ewm | rolling | expanding } or 'insample' for the full sample
     :param **kwargs: Additional arguments for the ewm (exponentially weighted mean) method.
         For rolling covariance, the window size must be specified in kwargs.
         For example, `window=10` for a 10-period rolling covariance.
@@ -87,7 +87,7 @@ def idiosyncratic_alpha(
     asset_returns: pd.DataFrame,
     factor_returns: pd.DataFrame,
     betas: pd.DataFrame = None,
-    how: str = "exponential",
+    how: str = "ewm",
     **kwargs,
 ) -> pd.DataFrame:
     """
@@ -98,8 +98,8 @@ def idiosyncratic_alpha(
     :param asset_returns: Asset returns DataFrame.
     :param factor_returns: Factor returns DataFrame.
     :param betas: Betas DataFrame, by default None.
-    :param how: Method of calculating covariance, either "exponential" or "rolling",
-        by default "exponential".
+    :param how: A DataFrame method which returns a BaseWindow [pandas.core.window.rolling]
+        for calculating covariance: { ewm | rolling | expanding } or 'insample' for the full sample
     :param **kwargs: Additional arguments for the ewm (exponentially weighted mean) method.
         For rolling covariance, the window size must be specified in kwargs.
         For example, `window=10` for a 10-period rolling covariance.
@@ -202,7 +202,7 @@ def idiosyncratic_residuals(
 def factor_model(
     asset_returns: pd.DataFrame,
     factor_returns: pd.DataFrame,
-    how: str = "exponential",
+    how: str = "ewm",
     **kwargs,
 ):
     """
@@ -210,8 +210,8 @@ def factor_model(
 
     :param asset_returns: Asset returns DataFrame.
     :param factor_returns: Factor returns DataFrame.
-    :param how: Method of calculating covariance, either "exponential" or "rolling",
-        by default "exponential".
+    :param how: A DataFrame method which returns a BaseWindow [pandas.core.window.rolling]
+        for calculating covariance: { ewm | rolling | expanding } or 'insample' for the full sample
     :param **kwargs: Additional arguments for the ewm (exponentially weighted mean) method.
         For rolling covariance, the window size must be specified in kwargs.
         For example, `window=10` for a 10-period rolling covariance.

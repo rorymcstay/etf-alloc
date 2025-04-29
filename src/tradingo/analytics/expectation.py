@@ -32,7 +32,7 @@ def safe_dataframe_window(
 def expectation(
     dataframe: pd.DataFrame,
     annualisation: int = 260,
-    how: str = "exponential",
+    how: str = "ewm",
     **kwargs,
 ) -> pd.DataFrame:
     """
