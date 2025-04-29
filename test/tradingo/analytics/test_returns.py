@@ -1,13 +1,13 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
 
 from tradingo.analytics.returns import (
-    value_returns,
-    pct_returns,
-    log_returns,
     compounded_returns,
+    log_returns,
+    pct_returns,
     returns,
+    value_returns,
 )
 
 
