@@ -40,7 +40,7 @@ def vol(
     :returns: The vol
     """
 
-    df = dataframe ** 2 if demean else dataframe
+    df = dataframe**2 if demean else dataframe
 
     agg_buffer = safe_dataframe_window(df, how, kwargs)
 
