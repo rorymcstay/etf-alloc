@@ -141,14 +141,14 @@ def compounded_returns(
 
     pct_returns_ = pct_returns(prices, fx, period=1, freq=freq)
 
-    returns_ = ((pct_returns_ + 1).cumprod()) - 1
+    compounded_factor = (pct_returns_ + 1).cumprod()
 
     if period:
-        if not returns_.shift(period).notna().any().all():
+        if not compounded_factor.shift(period).notna().any().all():
             raise ValueError(f"no data within the available window: {period}")
-        returns_ = (1 + returns_) / (1 + returns_.shift(period)) - 1
+        return (compounded_factor) / (compounded_factor.shift(period)) - 1
 
-    return returns_
+    return compounded_factor - 1
 
 
 _RETURNS_FUNCS = {
