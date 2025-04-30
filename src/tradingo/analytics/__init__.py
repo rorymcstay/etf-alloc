@@ -1,15 +1,16 @@
 """Tradingo analytics functions."""
 
 __all__ = [
-    "vol",
+    "returns",
     "cov",
     "expectation",
-    "sharpe_ratio",
     "omega_ratio",
-    "returns",
+    "sharpe_ratio",
+    "vol",
 ]
 
 from . import returns
 from .cov import cov
 from .expectation import expectation
 from .ratios import omega_ratio, sharpe_ratio
+from .vol import vol
