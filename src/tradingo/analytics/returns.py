@@ -57,7 +57,7 @@ def value_returns(
     """
 
     prices, fx = _align_series(prices.ffill(), fx)
-    share_value = prices.mul(fx)
+    share_value = prices.mul(fx).rename(prices.name)
 
     returns_ = ((share_value - share_value.shift(period))).fillna(0.0)
 
@@ -84,7 +84,7 @@ def pct_returns(
     """
 
     prices, fx = _align_series(prices.ffill(), fx)
-    share_value = prices.mul(fx)
+    share_value = prices.mul(fx).rename(prices.name)
 
     returns_ = (
         (share_value - share_value.shift(period)) / share_value.shift(period)
@@ -113,7 +113,7 @@ def log_returns(
     """
 
     prices, fx = _align_series(prices.ffill(), fx)
-    share_value = prices.mul(fx)
+    share_value = prices.mul(fx).rename(prices.name)
 
     returns_ = np.log(share_value / share_value.shift(period)).fillna(0.0)
 
