@@ -9,7 +9,7 @@ __all__ = [
     "returns",
 ]
 
+from . import returns
 from .cov import cov
 from .expectation import expectation
 from .ratios import omega_ratio, sharpe_ratio
-from . import returns

@@ -8,7 +8,6 @@ from arcticdb.version_store.library import Library
 
 from tradingo import symbols
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +23,10 @@ def sample_equity(
 
     logger.info(
         "querying yfinance ticker=%s start=%s end=%s interval=%s",
-        ticker, start_date, end_date, interval,
+        ticker,
+        start_date,
+        end_date,
+        interval,
     )
 
     if not end_date:
