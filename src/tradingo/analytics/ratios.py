@@ -43,7 +43,7 @@ def sharpe_ratio(
     required_return: float = 0.0,
     volatility_floor: Optional[dict[str, float]] = None,
     **kwargs,
-):
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Calculate the sharpe ratio of a given dataframe of returns.
 
@@ -69,10 +69,10 @@ def sharpe_ratio(
     # TODO: allow for non-constant volfloor, e.g. rolling quantile
     if volatility_floor is not None:
         volatility = volatility.apply(
-            lambda col: (
-                col.clip(lower=volatility_floor.get(col.name, 0.0))
-                if col.name in volatility_floor
-                else col
+            lambda col: col.clip(
+                lower=volatility_floor.get(
+                    col.name, volatility_floor.get("default", 0.0)
+                )
             )
         )
 
