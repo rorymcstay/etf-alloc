@@ -132,7 +132,7 @@ def symbol_provider(
             def get_symbol_data(v, with_no_date=False):
                 symbol = Symbol.parse(v, kwargs, symbol_prefix=symbol_prefix)
                 try:
-                    return (
+                    data = (
                         arctic.get_library(
                             symbol.library,
                             create_if_missing=True,
@@ -151,6 +151,9 @@ def symbol_provider(
                         )
                         .data
                     )
+                    if not with_no_date:
+                        data.index = data.index.tz_localize("UTC")
+                    return data
                 except InternalException as ex:
                     if "The data for this symbol is pickled" in ex.args[0]:
                         return get_symbol_data(v, with_no_date=True)
