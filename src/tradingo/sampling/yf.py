@@ -37,6 +37,7 @@ def symbol_to_currency(symbol: str) -> str:
         return symbol[:-2]
     return symbol
 
+
 def _get_ticker(ticker: str) -> str:
     if (ticker_ := currency_to_symbol(ticker)) != ticker:
         logger.info("converting currency ticker %s to %s", ticker, ticker_)
@@ -102,7 +103,6 @@ def create_universe(
     end_date = pd.Timestamp(end_date)
 
     def get_data(symbol: str):
-        symbol = _get_ticker(symbol)
         return pricelib.read(symbol, date_range=(start_date, end_date)).data
 
     result = pd.concat(
