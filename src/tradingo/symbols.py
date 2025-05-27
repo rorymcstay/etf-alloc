@@ -131,7 +131,7 @@ def symbol_provider(
 
             def get_symbol_data(v: str | list[str], with_no_date=False) -> pd.DataFrame:
                 if isinstance(v, list):
-                    return pd.concat(
+                    multidata = pd.concat(
                         (
                             get_symbol_data(item, with_no_date=with_no_date)
                             for item in v
@@ -139,6 +139,9 @@ def symbol_provider(
                         axis=1,
                         keys=v,
                     )
+                    columns = multidata.columns.get_level_values(1).drop_duplicates(keep="first")
+                    multidata = multidata.transpose().groupby(level=1).last().transpose()
+                    return multidata[columns]
                 symbol = Symbol.parse(v, kwargs, symbol_prefix=symbol_prefix)
                 try:
                     data = (
@@ -160,7 +163,11 @@ def symbol_provider(
                         )
                         .data
                     )
-                    if not with_no_date:
+                    if (
+                        not with_no_date
+                        and isinstance(data.index, pd.DatetimeIndex)
+                        and not data.index.tz
+                    ):
                         data.index = data.index.tz_localize("UTC")
                     return data
                 except InternalException as ex:
