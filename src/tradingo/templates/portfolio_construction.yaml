@@ -5,6 +5,7 @@
   {% endfor %}
   function: tradingo.portfolio.portfolio_construction
   symbols_in:
+    close: "{{ close }}"
     instruments:
     {% for model in model_weights %}
       - "instruments/{{ model }}"

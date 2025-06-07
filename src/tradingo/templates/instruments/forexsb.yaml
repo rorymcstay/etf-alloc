@@ -13,35 +13,35 @@
 "sample.{{ epic }}":
   depends_on: []
   symbols_out:
-   - "{{ raw_prices_lib }}/{{ epic }}.bid"
-   - "{{ raw_prices_lib }}/{{ epic }}.ask"
-  function: "{{ samplingFunction }}"
+   - "{{ raw_prices_lib }}/{{ epic }}.{{ interval }}MIN"
+  function: "tradingo.backfill.forexsb.load_backfill"
   params:
-    epic: "{{ epic }}"
+    symbol: "{{ epic }}"
     start_date: "{{ data_interval_start }}"
     end_date: "{{ data_interval_end }}"
     interval: "{{ interval }}"
+    data_dir: "{{ data_dir }}"
 {% endfor %}
 
 "sample.{{ universe_name }}":
-  function: tradingo.sampling.ig.create_universe
+  function: tradingo.backfill.forexsb.create_universe
   params:
     pricelib: "{{ raw_prices_lib }}"
     start_date: "{{ data_interval_start }}"
     end_date: "{{ data_interval_end }}"
+    symbols:
+    {% for epic in epics %}
+      - "{{ epic }}.{{ interval }}MIN"
+    {% endfor %}
   depends_on:
   {%for epic in epics %}
     - "sample.{{ epic }}"
   {% endfor %}
-  symbols_in:
-    instruments: "instruments/{{ universe_name }}"
   load_args:
     no_date: true
   publish_args:
-    astype: float,
+    astype: float
   symbols_out:
-  {% for field in ["ask", "mid", "bid"] %}
   {% for occurence in ["open", "high", "low", "close"] %}
-  - prices/{{ universe_name }}.{{ field }}.{{ occurence }}
-  {% endfor %}
+  - prices/{{ universe_name }}.mid.{{ occurence }}.{{ interval }}MIN
   {% endfor %}
