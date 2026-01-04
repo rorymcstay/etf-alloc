@@ -124,13 +124,7 @@ def portfolio_construction(
 
     # aggregate signals to get final position to trade
     signal_value = (
-        signals_df
-        .transpose()
-        .groupby(level=[1])
-        .sum()
-        .transpose()
-        .ffill()
-        .fillna(0)
+        signals_df.transpose().groupby(level=[1]).sum().transpose().ffill().fillna(0.0)
     )
 
     positions = signal_value.reindex_like(close).ffill()
